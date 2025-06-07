@@ -1,0 +1,16 @@
+# NAME                                   ID              SIZE      MODIFIED
+# smollm2:1.7b-instruct-q4_K_M           8ea75f835db9    1.1 GB    6 days ago
+# gemma3:1b-it-q4_K_M                    8648f39daa8f    815 MB    6 days ago
+# llava-phi3:3.8b-mini-q4_0              c7edd7b87593    2.9 GB    6 days ago
+# gemma3:4b-it-qat                       d01ad0579247    4.0 GB    6 days ago
+# llama3.1:latest                        46e0c10c039e    4.9 GB    10 days ago
+# qwen2.5:3b-instruct-q4_K_M             357c53fb659c    1.9 GB    2 weeks ago
+# mistral:7b-instruct-q4_K_M             1a85656b534f    4.4 GB    2 weeks ago
+# smollm2:1.7b                           cef4a1e09247    1.8 GB    4 weeks ago
+# llama3.2:3b-instruct-q4_K_M            a80c4f17acd5    2.0 GB    4 weeks ago
+# llama3.2:latest                        a80c4f17acd5    2.0 GB    4 weeks ago
+# llama3.2-vision:11b-instruct-q4_K_M    085a1fdae525    7.9 GB    4 weeks ago
+# llama2-uncensored:7b-chat-q4_K_M       a91c5baf8d31    4.1 GB    4 weeks ago
+# llama2-uncensored:latest               44040b922233    3.8 GB    4 weeks ago
+# llava:7b-v1.5-q4_K_M                   75a9333e75cd    4.7 GB    4 weeks ago
+# nomic-embed-text:latest                0a109f422b47    274 MB    4 weeks ago

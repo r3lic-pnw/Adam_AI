@@ -1,0 +1,25 @@
+{
+  "ollama": {
+    "endpoint": "http://localhost:11434",
+    "temperature": 0.6,
+    "max_tokens": 1000,
+    "num_predict": 1000,
+    "num_ctx": 3000,
+    "top_p": 0.9,
+    "top_k": 40,
+    "repeat_penalty": 1.1,
+    "timeout": 120,
+    "seed": null
+  },
+  "models": {
+    "text_model": "llama3:8b",
+    "vision_model": "llava:7b", 
+    "embed_model": "nomic-embed-text"
+  },
+  "bot": {
+    "name": "Assistant",
+    "username": "User",
+    "max_context_entries": 10,
+    "recent_convo_limit": 10
+  }
+}
