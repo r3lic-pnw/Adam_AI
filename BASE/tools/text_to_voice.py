@@ -14,7 +14,7 @@ def speak_through_vbcable(text):
     
     # You may need to adjust the index depending on your system's installed voices
     engine.setProperty('voice', voices[voiceIndex].id)  # Example: Microsoft David or Zira
-    engine.setProperty('rate', 250)
+    engine.setProperty('rate', 200)
     engine.setProperty('volume', 1.0)
 
     # Generate speech and save to a temporary WAV file

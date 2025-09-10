@@ -8,18 +8,25 @@
     "top_p": 0.9,
     "top_k": 40,
     "repeat_penalty": 1.1,
-    "timeout": 120,
+    "timeout": 600,
     "seed": null
   },
   "models": {
-    "text_model": "llama3:8b",
+    "text_model": "llama3.2:1b-instruct-q4_0",
     "vision_model": "llava:7b", 
     "embed_model": "nomic-embed-text"
   },
   "bot": {
-    "name": "Assistant",
+    "name": "Anna",
     "username": "User",
-    "max_context_entries": 10,
-    "recent_convo_limit": 10
+    "max_context_entries": 6,
+    "recent_convo_limit": 6
+  },
+    "mindcraft": {
+    "enabled": true,
+    "host": "localhost",
+    "port": 3000, 
+    "bot_name": "Anna",
+    "debug": true
   }
 }

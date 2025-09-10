@@ -1,213 +1,262 @@
-from datetime import datetime, timedelta, timezone
-from colorama import Fore
-import os
+# Filename: BASE/memory_methods/summarizer.py
 import requests
 import json
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
 
-from personality.bot_info import textmodel
-
-def summarize_memory(memory_manager):
+def summarize_memory(memory_manager, entries_to_process: Optional[int] = None) -> bool:
     """
-    Summarize complete days of conversation history into daily summaries.
-    Only complete days (midnight to 11:59:59 PM) are summarized.
+    Summarize recent memory entries and create embeddings for long-term storage.
+    Only summaries are embedded, not individual chat entries.
     
     Args:
-        memory_manager: MemoryManager instance that contains the memory and methods
-    """
-    now = datetime.now(timezone.utc)
-    text_llm_model: str = os.getenv("TEXT_LLM_MODEL", textmodel)
-
-    # Parse and sort entries by timestamp
-    entries = []
-    for e in memory_manager.memory:
-        raw_ts = e.get('timestamp')
-        if not raw_ts:
-            continue
-            
-        try:
-            ts = memory_manager._parse_human_datetime(raw_ts)
-            entries.append((ts, e))
-        except Exception as ex:
-            print(f"[Warning] Could not parse timestamp '{raw_ts}': {ex}")
-            continue
+        memory_manager: MemoryManager instance
+        entries_to_process: Number of entries to process (None = all unsummarized)
     
-    if not entries:
-        print(Fore.CYAN + "No entries to summarize." + Fore.RESET)
-        return
-    
-    entries.sort(key=lambda x: x[0])
-    print(Fore.CYAN + f"Summarizing memory from {len(entries)} entries..." + Fore.RESET)
-    
-    # Group entries by date
-    daily_groups = {}
-    for ts, entry in entries:
-        date_key = ts.date()
-        if date_key not in daily_groups:
-            daily_groups[date_key] = []
-        daily_groups[date_key].append((ts, entry))
-    
-    summaries = []
-    summarized_dates = set()
-    
-    # Process complete days (exclude today since it's not complete)
-    today = now.date()
-    
-    for date_key in sorted(daily_groups.keys()):
-        if date_key >= today:
-            continue  # Skip today and future dates
-            
-        day_entries = daily_groups[date_key]
-        
-        if day_entries:
-            # Build conversation text for this day
-            conversation_parts = []
-            user_entries = [e for ts, e in day_entries if e.get('role') == 'user']
-            assistant_entries = [e for ts, e in day_entries if e.get('role') == 'assistant']
-            
-            # Pair up user and assistant entries
-            for i in range(min(len(user_entries), len(assistant_entries))):
-                user_entry = user_entries[i]
-                assistant_entry = assistant_entries[i]
-                
-                timestamp = user_entry.get('timestamp', '')
-                conversation_parts.append(f"[{timestamp}]")
-                conversation_parts.append(f"{memory_manager.username}: {user_entry['content']}")
-                conversation_parts.append(f"{memory_manager.botname}: {assistant_entry['content']}")
-                conversation_parts.append("")  # Add spacing
-            
-            if conversation_parts:
-                conversation_text = '\n'.join(conversation_parts)
-                
-                # Generate summary with human-readable date
-                date_str = date_key.strftime("%A, %B %d, %Y")
-                
-                prompt = (f"Summarize these interactions from {date_str} "
-                        f"as a personal diary entry from the AI assistant {memory_manager.botname}'s perspective. Use 'I' instead of {memory_manager.botname}. Focus on key topics, emotions, and memorable moments. "
-                        f"Summarize in one paragraph only. Do not create a dialog. Do not quote text from the conversation. Write the summary as a recollection "
-                         "of events, interactions, and details from the assistant's perspective. Mention the names of those conversed with. The following is the conversation to summarize:\n\n"
-                        f"{conversation_text}")
-                print(Fore.CYAN + f"{prompt}" + Fore.RESET)
-                try:
-                    summary = _call_ollama_for_summary(prompt, text_llm_model, memory_manager.ollama_endpoint)
-
-                    summary_accepted = False
-                    while not summary_accepted:
-                        if input(Fore.CYAN + "Is this summary acceptable? (y/n)" + Fore.RESET) != "y":
-                            print(Fore.RED + "Discarded. Running new summarization..." + Fore.RESET)
-                            summary = _call_ollama_for_summary(prompt, text_llm_model, memory_manager.ollama_endpoint)
-                        else:
-                            summary_accepted = True
-            
-                    if summary.strip():  # Only add non-empty summaries
-                        summary_text = f"Daily Summary ({date_str}): {summary.strip()}"
-                        
-                        # Add to embeddings
-                        memory_manager.add_embedding(summary_text, {
-                            'type': 'daily_summary',
-                            'date': date_str
-                        })
-                        
-                        summaries.append({
-                            'type': 'daily_summary',
-                            'date': date_str,
-                            'summary': summary.strip(),
-                            'timestamp': datetime.combine(date_key, datetime.min.time()).replace(tzinfo=timezone.utc).strftime("%A, %B %d, %Y at %I:%M %p UTC")
-                        })
-                        print(Fore.YELLOW + f"Created daily summary for {date_str}" + Fore.RESET)
-                        
-                        # Mark this date as successfully summarized
-                        summarized_dates.add(date_key)
-                except Exception as e:
-                    print(f"[Error] Failed to generate summary for {date_str}: {e}")
-    
-    # Keep only entries that were NOT successfully summarized
-    # This includes today's entries and any entries from dates that failed to summarize
-    new_memory = []
-    for entry in memory_manager.memory:
-        raw_ts = entry.get('timestamp')
-        if not raw_ts:
-            # Keep entries without timestamps
-            new_memory.append(entry)
-            continue
-            
-        try:
-            ts = memory_manager._parse_human_datetime(raw_ts)
-            entry_date = ts.date()
-            if entry_date not in summarized_dates:
-                new_memory.append(entry)
-        except Exception:
-            # Keep entries with unparseable timestamps
-            new_memory.append(entry)
-    
-    memory_manager.memory = new_memory
-    memory_manager._save_memory()
-    print(Fore.GREEN + f"Memory summarization complete. "
-                      f"Created {len(summaries)} daily summaries, "
-                      f"kept {len(memory_manager.memory)} recent entries." + Fore.RESET)
-
-
-def _call_ollama_for_summary(prompt: str, model: str, ollama_endpoint: str) -> str:
-    """
-    Helper function to call Ollama API for summarization
-    
-    Args:
-        prompt: The summarization prompt
-        model: The model to use
-        ollama_endpoint: The Ollama endpoint URL
-        
     Returns:
-        The generated summary text
+        bool: True if summarization was successful
     """
     try:
-        url = f"{ollama_endpoint}/api/generate"
+        # Get entries for summarization
+        if entries_to_process:
+            entries = memory_manager.get_entries_for_summarization()[-entries_to_process:]
+            start_idx = len(memory_manager.memory) - entries_to_process
+        else:
+            entries = memory_manager.get_entries_for_summarization()
+            start_idx = 0
         
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "temperature": 0.7,
-        }
+        if len(entries) < 2:  # Need at least 2 entries to summarize
+            print(f"{memory_manager.info_color}[Summarizer] Not enough entries to summarize ({len(entries)}){memory_manager.reset_color}")
+            return False
         
-        print(Fore.CYAN + f"[Summarizer] Calling {model} for summarization" + Fore.RESET)
+        # Group entries into conversation pairs/chunks
+        conversation_chunks = _group_entries_into_conversations(entries)
         
-        response = requests.post(url, json=payload, timeout=120)
-        response.raise_for_status()
-        result = response.json()
+        if not conversation_chunks:
+            print(f"{memory_manager.info_color}[Summarizer] No valid conversation chunks found{memory_manager.reset_color}")
+            return False
         
-        # Extract content from response
-        content = ""
-        if "response" in result:
-            content = result["response"]
-        elif "message" in result and "content" in result["message"]:
-            content = result["message"]["content"]
-        elif "choices" in result and result["choices"]:
-            content = result["choices"][0].get("message", {}).get("content", "")
+        print(f"{memory_manager.system_color}[Summarizer] Processing {len(conversation_chunks)} conversation chunks...{memory_manager.reset_color}")
         
-        # Parse thinking tags and actual response
-        raw_content = content.strip()
-        thinking_content = ""
-        actual_response = raw_content
+        summaries_created = 0
         
-        if "<think>" in raw_content and "</think>" in raw_content:
-            import re
-            # Use raw strings to properly handle the regex pattern
-            think_pattern = r'<think>(.*?)</think>'
-            think_match = re.search(think_pattern, raw_content, re.DOTALL)
-            if think_match:
-                thinking_content = think_match.group(1).strip()
-                actual_response = re.sub(think_pattern, '', raw_content, flags=re.DOTALL).strip()
+        for i, chunk in enumerate(conversation_chunks):
+            try:
+                # Create summary for this chunk
+                summary = _create_conversation_summary(memory_manager, chunk, i + 1)
+                
+                if summary and summary.strip():
+                    # Add summary as embedding (this is the only place chat content gets embedded)
+                    timestamp = datetime.now(timezone.utc).strftime("%A, %B %d, %Y at %I:%M %p UTC")
+                    metadata = {
+                        'entry_type': 'conversation_summary',
+                        'source_type': 'personal',
+                        'conversation_chunk': i + 1,
+                        'entries_count': len(chunk),
+                        'summary_date': timestamp,
+                        'created_by': 'summarizer'
+                    }
+                    
+                    memory_manager.add_summary_embedding(summary, metadata)
+                    summaries_created += 1
+                    
+                    print(f"{memory_manager.success_color}[Summarizer] Created summary {i+1}: {summary[:80]}...{memory_manager.reset_color}")
+                
+            except Exception as e:
+                print(f"{memory_manager.error_color}[Summarizer] Error processing chunk {i+1}: {e}{memory_manager.reset_color}")
+                continue
         
-        if thinking_content:
-            print(Fore.MAGENTA + "[Summarizer Thinking Process]:" + Fore.RESET)
-            print(Fore.MAGENTA + thinking_content + Fore.RESET)
-            print()
+        if summaries_created > 0:
+            # Mark entries as summarized (archive them)
+            if not entries_to_process:  # Only archive if we processed all entries
+                memory_manager.mark_entries_as_summarized(len(entries) - 10)  # Keep last 10 entries
+            
+            print(f"{memory_manager.success_color}[Summarizer] Successfully created {summaries_created} summaries{memory_manager.reset_color}")
+            return True
+        else:
+            print(f"{memory_manager.error_color}[Summarizer] No summaries were created{memory_manager.reset_color}")
+            return False
+            
+    except Exception as e:
+        print(f"{memory_manager.error_color}[Summarizer] Summarization failed: {e}{memory_manager.reset_color}")
+        return False
+
+def _group_entries_into_conversations(entries: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """
+    Group memory entries into logical conversation chunks.
+    Each chunk should be a meaningful conversation segment.
+    """
+    if not entries:
+        return []
+    
+    chunks = []
+    current_chunk = []
+    
+    for entry in entries:
+        current_chunk.append(entry)
         
-        # Clean up response
-        cleaned_response = "".join(c for c in actual_response if c not in "#*`>").strip()
+        # Create a new chunk every 10-15 entries or at natural breakpoints
+        if len(current_chunk) >= 12:
+            chunks.append(current_chunk)
+            current_chunk = []
+    
+    # Add remaining entries as final chunk if substantial
+    if len(current_chunk) >= 4:
+        chunks.append(current_chunk)
+    elif current_chunk and chunks:
+        # Add small remainder to last chunk
+        chunks[-1].extend(current_chunk)
+    elif current_chunk:
+        # First chunk, even if small
+        chunks.append(current_chunk)
+    
+    return chunks
+
+def _create_conversation_summary(memory_manager, conversation_chunk: List[Dict[str, Any]], chunk_number: int) -> Optional[str]:
+    """
+    Create a summary of a conversation chunk using the LLM.
+    """
+    try:
+        # Format the conversation for summarization
+        conversation_text = _format_conversation_for_summary(memory_manager, conversation_chunk)
         
-        print(Fore.CYAN + f"[Summarizer] Generated summary: {cleaned_response}..." + Fore.RESET)
-        return cleaned_response
+        if not conversation_text.strip():
+            return None
+        
+        # Create summarization prompt
+        summary_prompt = f"""Please create a concise but comprehensive summary of this conversation between {memory_manager.username} and {memory_manager.botname}. Focus on:
+
+1. Main topics discussed
+2. Important information shared
+3. Questions asked and answers given
+4. Any decisions or conclusions reached
+5. Context that might be relevant for future conversations
+
+Keep the summary informative but concise (2-4 sentences typically).
+
+Conversation to summarize:
+{conversation_text}
+
+Summary:"""
+
+        # Call Ollama to generate summary
+        summary = _call_ollama_for_summary(memory_manager, summary_prompt)
+        
+        return summary
         
     except Exception as e:
-        print(Fore.RED + f"[Error] Ollama API call failed during summarization: {e}" + Fore.RESET)
-        return ""
+        print(f"{memory_manager.error_color}[Summarizer] Error creating summary for chunk {chunk_number}: {e}{memory_manager.reset_color}")
+        return None
+
+def _format_conversation_for_summary(memory_manager, conversation_chunk: List[Dict[str, Any]]) -> str:
+    """Format conversation chunk into readable text for summarization."""
+    formatted_lines = []
+    
+    for entry in conversation_chunk:
+        role = entry.get('role', '')
+        content = entry.get('content', '')
+        timestamp = entry.get('timestamp', '')
+        
+        if role == 'user':
+            formatted_lines.append(f"{memory_manager.username}: {content}")
+        elif role == 'assistant':
+            formatted_lines.append(f"{memory_manager.botname}: {content}")
+    
+    return "\n".join(formatted_lines)
+
+def _call_ollama_for_summary(memory_manager, prompt: str) -> Optional[str]:
+    """Call Ollama API to generate summary."""
+    try:
+        url = f"{memory_manager.ollama_endpoint}/api/generate"
+        payload = {
+            "model": "llama3.2:latest",  # Use a efficient model for summaries
+            "prompt": prompt,
+            "stream": False,
+            "temperature": 0.3,  # Lower temperature for more focused summaries
+            "max_tokens": 200,   # Limit summary length
+            "top_p": 0.9,
+            "stop": ["\n\n", "User:", "Human:", "Assistant:"]
+        }
+        
+        response = requests.post(url, json=payload, timeout=60)
+        response.raise_for_status()
+        
+        result = response.json()
+        summary = result.get("response", "").strip()
+        
+        # Clean up the summary
+        if summary.lower().startswith("summary:"):
+            summary = summary[8:].strip()
+        
+        return summary if summary else None
+        
+    except requests.exceptions.RequestException as e:
+        print(f"{memory_manager.error_color}[Summarizer] Ollama API error: {e}{memory_manager.reset_color}")
+        return None
+    except Exception as e:
+        print(f"{memory_manager.error_color}[Summarizer] Error generating summary: {e}{memory_manager.reset_color}")
+        return None
+
+def manual_summarize_range(memory_manager, start_index: int, end_index: int) -> bool:
+    """
+    Manually summarize a specific range of memory entries.
+    
+    Args:
+        memory_manager: MemoryManager instance
+        start_index: Starting index in memory array
+        end_index: Ending index in memory array
+    
+    Returns:
+        bool: True if successful
+    """
+    try:
+        if start_index < 0 or end_index >= len(memory_manager.memory) or start_index >= end_index:
+            print(f"{memory_manager.error_color}[Summarizer] Invalid range: {start_index}-{end_index}{memory_manager.reset_color}")
+            return False
+        
+        entries = memory_manager.memory[start_index:end_index + 1]
+        conversation_chunks = [entries]  # Treat the range as one chunk
+        
+        summary = _create_conversation_summary(memory_manager, conversation_chunks[0], 1)
+        
+        if summary and summary.strip():
+            timestamp = datetime.now(timezone.utc).strftime("%A, %B %d, %Y at %I:%M %p UTC")
+            metadata = {
+                'entry_type': 'manual_summary',
+                'source_type': 'personal',
+                'range_start': start_index,
+                'range_end': end_index,
+                'entries_count': len(entries),
+                'summary_date': timestamp,
+                'created_by': 'manual_summarizer'
+            }
+            
+            memory_manager.add_summary_embedding(summary, metadata)
+            print(f"{memory_manager.success_color}[Summarizer] Manual summary created: {summary[:80]}...{memory_manager.reset_color}")
+            return True
+        else:
+            print(f"{memory_manager.error_color}[Summarizer] Failed to create manual summary{memory_manager.reset_color}")
+            return False
+            
+    except Exception as e:
+        print(f"{memory_manager.error_color}[Summarizer] Manual summarization failed: {e}{memory_manager.reset_color}")
+        return False
+
+def get_summary_stats(memory_manager) -> Dict[str, Any]:
+    """Get statistics about existing summaries."""
+    summary_count = 0
+    manual_count = 0
+    
+    for embedding in memory_manager.embeddings_data:
+        metadata = embedding.get('metadata', {})
+        if metadata.get('entry_type') == 'conversation_summary':
+            summary_count += 1
+        elif metadata.get('entry_type') == 'manual_summary':
+            manual_count += 1
+    
+    return {
+        'total_summaries': len(memory_manager.embeddings_data),
+        'conversation_summaries': summary_count,
+        'manual_summaries': manual_count,
+        'chat_entries_remaining': len(memory_manager.memory)
+    }

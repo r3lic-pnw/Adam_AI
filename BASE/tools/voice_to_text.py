@@ -1,3 +1,4 @@
+# Filename: voice_to_text.py
 import os
 import pyaudio
 from vosk import Model, KaldiRecognizer
@@ -5,6 +6,7 @@ import json
 import threading
 from colorama import Fore, init
 import sounddevice as sd
+from pathlib import Path
 
 from personality.bot_info import botname, toolTColor, resetTColor, errorTColor
 # Optional: ANSI color for console output
@@ -12,21 +14,54 @@ YELLOW = "\033[93m"
 
 samplerate: int = 16000
 
-def load_vosk_model(model_dir="models/vosk-model-small-en-us-0.15"):
+def load_vosk_model(model_dir=None):
     """
-    Loads the Vosk speech recognition model from the specified directory.
+    Loads the Vosk speech recognition model with correct path resolution.
     """
-    if not os.path.exists(model_dir):
-        raise FileNotFoundError("Vosk model not found! Download and place it in the 'models' directory.")
-    return Model(model_dir)
+    if model_dir is None:
+        # Get the project root (Family directory)
+        current_file = Path(__file__)  # BASE/tools/voice_to_text.py
+        project_root = current_file.parent.parent.parent  # Go up to Family/
+        
+        # Try both model options in order of preference
+        model_paths_to_try = [
+            # project_root / "models" / "vosk-model-small-en-us-0.15",  # Faster, smaller
+            project_root / "models" / "vosk-model-en-us-0.42-gigaspeech",  # Larger, more accurate
+        ]
+        
+        for model_path in model_paths_to_try:
+            if model_path.exists():
+                print(toolTColor + f"Loading Vosk model from: {model_path}" + resetTColor)
+                try:
+                    return Model(str(model_path))
+                except Exception as e:
+                    print(errorTColor + f"Failed to load model from {model_path}: {e}" + resetTColor)
+                    continue
+        
+        # If no models found, provide helpful error message
+        available_models = []
+        models_dir = project_root / "models"
+        if models_dir.exists():
+            available_models = [d.name for d in models_dir.iterdir() if d.is_dir()]
+        
+        error_msg = f"""
+Vosk model not found! 
+Searched paths:
+{chr(10).join(f"  - {path}" for path in model_paths_to_try)}
 
-# def get_device_index_by_name(target_name):
-#     p = pyaudio.PyAudio()
-#     for i in range(p.get_device_count()):
-#         info = p.get_device_info_by_index(i)
-#         if target_name.lower() in info['name'].lower():
-#             return i
-#     raise ValueError(f"Device with name '{target_name}' not found.")
+Available models in {models_dir}:
+{chr(10).join(f"  - {model}" for model in available_models) if available_models else "  No models found"}
+
+Current working directory: {os.getcwd()}
+Project root: {project_root}
+"""
+        
+        raise FileNotFoundError(error_msg)
+    else:
+        # Legacy path for backward compatibility
+        if not os.path.exists(model_dir):
+            raise FileNotFoundError("Vosk model not found! Download and place it in the 'models' directory.")
+        return Model(model_dir)
 
 def listen_and_transcribe(min_length=5, max_attempts=50):
     """
@@ -73,7 +108,7 @@ def listen_and_transcribe(min_length=5, max_attempts=50):
 def init_audio(self):
     """Initialize audio system for the VTuberAI instance"""
     self.vosk_model = load_vosk_model()
-    self._start_vosk_stream()
+    # Removed: self._start_vosk_stream() - This is now called explicitly in bot.py's run method
 
 def start_vosk_stream(self):
     """Start the Vosk recognition worker thread and audio stream"""
@@ -88,6 +123,9 @@ def start_vosk_stream(self):
                 if len(text) >= 5 and f"{botname}" not in text.lower():
                     self.text_queue.put(text)
                     print(toolTColor + f"[Speech] Recognized: {text}" + resetTColor)
+            else:
+                # Handle partial results if needed for real-time display, but don't queue them
+                pass 
 
     # Start the recognition worker thread
     threading.Thread(target=recognition_worker, daemon=True).start()

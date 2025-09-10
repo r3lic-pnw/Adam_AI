@@ -1,10 +1,10 @@
 # Personalize Bot and User Information and Colors
 
 # Bot and User Information
-botname = "Assistant"
+botname = "Anna"
 username = "User"
-textmodel="qwen3:1.7b"
-visionmodel = "gemma3:4b-it-qat"
+textmodel = "gemma3:1b-it-q4_K_M"
+visionmodel="llava:7b-v1.5-q4_K_M"
 embedmodel = "nomic-embed-text:latest"
 
 voiceIndex = 0
