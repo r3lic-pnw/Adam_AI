@@ -1,5 +1,71 @@
 # Ollama AI Game Assistant - Complete Setup Guide
 
+## Table of Contents
+
+- [What Is This?](#what-is-this)
+- [Key Features](#key-features)
+  - [Core Functionality](#core-functionality)
+  - [Gaming Features](#gaming-features)
+  - [Technical Features](#technical-features)
+- [What You'll Need](#what-youll-need)
+  - [Required Software](#required-software)
+  - [System Requirements](#system-requirements)
+  - [Optional Hardware](#optional-hardware)
+- [Installation Guide](#installation-guide)
+  - [Step 1: Install Core Dependencies](#step-1-install-core-dependencies)
+  - [Step 2: Download the Assistant](#step-2-download-the-assistant)
+  - [Step 3: Set Up Python Environment](#step-3-set-up-python-environment)
+  - [Step 4: Set Up Minecraft Bot (Optional)](#step-4-set-up-minecraft-bot-optional)
+  - [Step 5: Configure the Assistant](#step-5-configure-the-assistant)
+- [How to Start the Assistant](#how-to-start-the-assistant)
+  - [Quick Start (Recommended)](#quick-start-recommended)
+  - [Minecraft Mode](#minecraft-mode)
+  - [Manual Start](#manual-start)
+  - [Mobile Mode (Advanced)](#mobile-mode-advanced)
+- [Understanding the Interface](#understanding-the-interface)
+  - [GUI Mode](#gui-mode)
+  - [Terminal Mode](#terminal-mode)
+  - [Voice Mode](#voice-mode)
+- [Available Commands](#available-commands)
+  - [Basic Commands](#basic-commands)
+  - [Feature Toggles](#feature-toggles)
+  - [Memory Commands](#memory-commands)
+  - [Minecraft Commands](#minecraft-commands-when-in-minecraft-mode)
+  - [Preset Configurations](#preset-configurations)
+- [Troubleshooting Common Issues](#troubleshooting-common-issues)
+- [Customizing Your Assistant](#customizing-your-assistant)
+  - [Personality Configuration](#personality-configuration)
+  - [System Prompts](#system-prompts)
+  - [Avatar Setup with Warudo (Advanced)](#avatar-setup-with-warudo-advanced)
+- [Performance Optimization](#performance-optimization)
+  - [For Lower-End Computers](#for-lower-end-computers)
+  - [For High-End Computers](#for-high-end-computers)
+- [File Structure Explained](#file-structure-explained)
+- [Memory Management System](#memory-management-system)
+  - [Overview](#overview-1)
+  - [Memory Architecture](#memory-architecture)
+  - [Memory Components Explained](#memory-components-explained)
+  - [Memory Search Intelligence](#memory-search-intelligence)
+  - [Memory Commands](#memory-commands-1)
+  - [Creating Custom Knowledge Bases](#creating-custom-knowledge-bases)
+  - [Memory Performance Optimization](#memory-performance-optimization)
+  - [Memory System Troubleshooting](#memory-system-troubleshooting)
+  - [Advanced Memory Features](#advanced-memory-features)
+- [Android Mobile Version Setup](#android-mobile-version-setup)
+  - [Overview](#overview-2)
+  - [Mobile Version Features](#mobile-version-features)
+  - [Installation Requirements](#installation-requirements)
+  - [Step-by-Step Mobile Installation](#step-by-step-mobile-installation)
+  - [Mobile-Specific Configuration](#mobile-specific-configuration)
+  - [Usage Instructions](#usage-instructions)
+  - [Intelligent Features](#intelligent-features)
+  - [Performance Optimization](#performance-optimization-1)
+  - [Troubleshooting Mobile Issues](#troubleshooting-mobile-issues)
+  - [Mobile-Specific Limitations](#mobile-specific-limitations)
+  - [Cross-Device Memory Synchronization](#cross-device-memory-synchronization)
+
+---
+
 ## What Is This?
 
 This is a local AI assistant designed for gaming and general interaction. It runs entirely on your computer using Ollama (a local AI system) and includes features like voice chat, internet search, avatar animations, memory storage, and Minecraft integration. Think of it as your personal AI companion that can see your screen, remember conversations, search the web, and even play Minecraft with you!
@@ -410,8 +476,6 @@ Project Root/
 └── venv/                 # Python virtual environment
 ```
 
-
-
 # Memory Management System
 
 ## Overview
@@ -748,8 +812,7 @@ enable_base_memory = True     # Keep knowledge base active
 ```bash
 # Backup and reset
 cp personality/memory/memory.json personality/memory/memory_backup.json
-echo "[]" > personality/memory/memory.json
-```
+echo "[]" > personality/memory/memory.
 
 **If embeddings.json is corrupted**:
 ```bash
