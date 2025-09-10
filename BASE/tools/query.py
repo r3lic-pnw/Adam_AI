@@ -17,9 +17,14 @@ import logging
 from dataclasses import dataclass
 import re
 
+from personality.controls import MAX_SEARCH_RESULTS
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Configuration - Maximum number of search results to return
+# MAX_SEARCH_RESULTS = 6  # Change this value to control the number of results
 
 @dataclass
 class SearchResult:
@@ -35,8 +40,11 @@ class WebSearchAgent:
     and implements rate limiting to avoid API restrictions.
     """
     
-    def __init__(self):
+    def __init__(self, max_results: Optional[int] = None):
         self.session = requests.Session()
+        
+        # Set max results - use parameter if provided, otherwise use global constant
+        self.max_results = max_results if max_results is not None else MAX_SEARCH_RESULTS
         
         # Rotate user agents to avoid blocking
         self.user_agents = [
@@ -150,8 +158,8 @@ class WebSearchAgent:
         # Remove extra whitespace and normalize
         text = re.sub(r'\s+', ' ', text.strip())
         # Remove common artifacts
-        text = re.sub(r'\.\.\..*?›', '', text)
-        text = re.sub(r'›.*?›', '', text)
+        text = re.sub(r'\.\.\..*?â€º', '', text)
+        text = re.sub(r'â€º.*?â€º', '', text)
         
         return text[:300]  # Limit snippet length
     
@@ -180,7 +188,8 @@ class WebSearchAgent:
             
             logger.info(f"Found {len(result_divs)} potential Google results")
             
-            for div in result_divs[:8]:  # Get more to filter better
+            # Use max_results instead of hardcoded value
+            for div in result_divs[:self.max_results + 2]:  # Get a few extra to filter better
                 try:
                     # Try multiple title selectors - updated for current Google
                     title_elem = (
@@ -237,7 +246,7 @@ class WebSearchAgent:
                             snippet = self._clean_text(snippet_elem.get_text())
                             break
                     
-                    if title and url and len(results) < 6:
+                    if title and url and len(results) < self.max_results:
                         results.append(SearchResult(
                             title=title,
                             url=url,
@@ -252,6 +261,8 @@ class WebSearchAgent:
         except Exception as e:
             logger.error(f"Error parsing Google results: {e}")
         
+        return results
+    
     def _parse_duckduckgo_results(self, html_content: str) -> List[SearchResult]:
         """Parse search results from DuckDuckGo HTML version"""
         results = []
@@ -264,7 +275,8 @@ class WebSearchAgent:
             
             logger.info(f"Found {len(result_divs)} DuckDuckGo results")
             
-            for div in result_divs[:6]:
+            # Use max_results instead of hardcoded value
+            for div in result_divs[:self.max_results]:
                 try:
                     # Extract title and URL
                     title_link = div.select_one('.result__a')
@@ -307,7 +319,8 @@ class WebSearchAgent:
             
             logger.info(f"Found {len(result_divs)} Yandex results")
             
-            for div in result_divs[:6]:
+            # Use max_results instead of hardcoded value
+            for div in result_divs[:self.max_results]:
                 try:
                     # Extract title and URL
                     title_link = div.select_one('.organic__url-text') or div.select_one('h2 a')
@@ -374,7 +387,8 @@ class WebSearchAgent:
             
             logger.info(f"Found {len(result_divs)} Bing results")
             
-            for div in result_divs[:6]:
+            # Use max_results instead of hardcoded value
+            for div in result_divs[:self.max_results]:
                 try:
                     # Extract title and URL
                     title_selectors = [
@@ -451,7 +465,8 @@ class WebSearchAgent:
             
             logger.info(f"Found {len(result_divs)} SearX results")
             
-            for div in result_divs[:6]:
+            # Use max_results instead of hardcoded value
+            for div in result_divs[:self.max_results]:
                 try:
                     # Extract title and URL
                     title_link = (
@@ -504,13 +519,13 @@ class WebSearchAgent:
             if engine_config['name'] == 'google':
                 params = {
                     'q': query,
-                    'num': 10,
+                    'num': min(10, self.max_results + 4),  # Request a few extra for filtering
                     'hl': 'en'
                 }
             elif engine_config['name'] == 'bing':
                 params = {
                     'q': query,
-                    'count': 10
+                    'count': min(10, self.max_results + 4)  # Request a few extra for filtering
                 }
             elif engine_config['name'] == 'duckduckgo':
                 params = {
@@ -559,7 +574,7 @@ class WebSearchAgent:
             return []
         
         query = query.strip()
-        logger.info(f"Searching for: {query}")
+        logger.info(f"Searching for: {query} (max results: {self.max_results})")
         
         all_results = []
         
@@ -574,17 +589,17 @@ class WebSearchAgent:
                 all_results.extend(results)
                 
                 # If we have enough results, stop searching
-                if len(all_results) >= 6:
+                if len(all_results) >= self.max_results:
                     break
             else:
                 logger.warning(f"No results from {engine['name']}, trying next engine...")
         
-        # Remove duplicates and limit to 6 results
+        # Remove duplicates and limit to max_results
         seen_urls = set()
         unique_results = []
         
         for result in all_results:
-            if result.url not in seen_urls and len(unique_results) < 6:
+            if result.url not in seen_urls and len(unique_results) < self.max_results:
                 seen_urls.add(result.url)
                 unique_results.append(result)
         
@@ -598,7 +613,7 @@ class WebSearchAgent:
                 'source': result.source
             })
         
-        logger.info(f"Returning {len(formatted_results)} unique results")
+        logger.info(f"Returning {len(formatted_results)} unique results (max: {self.max_results})")
         return formatted_results
     
     def search_and_summarize(self, query: str) -> str:
@@ -616,7 +631,7 @@ class WebSearchAgent:
         if not results:
             return f"No search results found for query: {query}"
         
-        summary = f"Search results for '{query}':\n\n"
+        summary = f"Search results for '{query}' (showing {len(results)} of max {self.max_results} results):\n\n"
         
         for i, result in enumerate(results, 1):
             summary += f"{i}. **{result['title']}**\n"
@@ -628,58 +643,59 @@ class WebSearchAgent:
         return summary
 
 # Convenience functions for direct usage
-def web_search(query: str) -> List[Dict]:
+def web_search(query: str, max_results: Optional[int] = None) -> List[Dict]:
     """
     Simple function to perform a web search
     
     Args:
         query (str): Search query
+        max_results (int, optional): Maximum number of results to return
         
     Returns:
         List[Dict]: Search results
     """
-    agent = WebSearchAgent()
+    agent = WebSearchAgent(max_results=max_results)
     return agent.search(query)
 
-def web_search_summary(query: str) -> str:
+def web_search_summary(query: str, max_results: Optional[int] = None) -> str:
     """
     Simple function to get formatted search results
     
     Args:
         query (str): Search query
+        max_results (int, optional): Maximum number of results to return
         
     Returns:
         str: Formatted search results
     """
-    agent = WebSearchAgent()
+    agent = WebSearchAgent(max_results=max_results)
     return agent.search_and_summarize(query)
 
 # Example usage and testing
 if __name__ == "__main__":
-    # Initialize the search agent
-    search_agent = WebSearchAgent()
+    # Initialize the search agent with custom max results
+    search_agent = WebSearchAgent(max_results=3)  # Override global default
     
     # Example search
     test_query = "Latest Minecraft updates"
     
-    #print(f"Testing search for: {test_query}")
-    #print("=" * 50)
+    print(f"Testing search for: {test_query}")
+    print(f"MAX_SEARCH_RESULTS setting: {MAX_SEARCH_RESULTS}")
+    print(f"Agent max_results setting: {search_agent.max_results}")
+    print("=" * 50)
     
     # Method 1: Get structured results
     results = search_agent.search(test_query)
-    #print(f"Found {len(results)} results:")
-    # for i, result in enumerate(results, 1):
-
-        #print(f"\n{i}. {result['title']}")
-        #print(f"   URL: {result['url']}")
-        # print(f"   Snippet: {result['snippet'][:100]}...")
-        # print(f"   Snippet: {result['snippet']}")
+    print(f"Found {len(results)} results:")
+    for i, result in enumerate(results, 1):
+        print(f"\n{i}. {result['title']}")
+        print(f"   URL: {result['url']}")
+        print(f"   Snippet: {result['snippet']}")
     
-    #print("\n" + "=" * 50)
+    print("\n" + "=" * 50)
     
     # Method 2: Get formatted summary
     if results:
         summary = search_agent.search_and_summarize(test_query)
         print("Formatted summary:")
         print(summary)
-        #print(summary[:500] + "..." if len(summary) > 500 else summary)
