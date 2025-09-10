@@ -116,7 +116,7 @@ class WebSearchAgent:
         
         self.last_request_time = time.time()
     
-    def _make_request(self, url: str, params: Dict = None, timeout: int = 20) -> Optional[requests.Response]:
+    def _make_request(self, url: str, params: Optional[Dict] = None, timeout: int = 20) -> Optional[requests.Response]:
         """Make a robust HTTP request with error handling"""
         self._enforce_rate_limit()
         self._update_headers()  # Rotate user agent
@@ -216,16 +216,24 @@ class WebSearchAgent:
                     if not link_elem:
                         continue
                     
-                    url = link_elem.get('href', '')
+                    from bs4 import Tag
+                    if isinstance(link_elem, Tag):
+                        url = link_elem.get('href', '')
+                    else:
+                        url = str(link_elem)
                     
                     # Clean Google redirect URLs
-                    if url.startswith('/url?q='):
+                    if url and isinstance(url, str) and url.startswith('/url?q='):
                         url = url.split('/url?q=')[1].split('&')[0]
                         from urllib.parse import unquote
                         url = unquote(url)
                     
                     # Skip Google's internal links
-                    if 'google.com' in url or url.startswith('/search') or not url.startswith('http'):
+                    if (
+                        isinstance(url, str) and (
+                            'google.com' in url or url.startswith('/search') or not url.startswith('http')
+                        )
+                    ):
                         continue
                     
                     # Find snippet - updated selectors
@@ -249,7 +257,7 @@ class WebSearchAgent:
                     if title and url and len(results) < self.max_results:
                         results.append(SearchResult(
                             title=title,
-                            url=url,
+                            url=str(url),
                             snippet=snippet,
                             source="google"
                         ))
@@ -293,7 +301,7 @@ class WebSearchAgent:
                     if title and url:
                         results.append(SearchResult(
                             title=title,
-                            url=url,
+                            url=str(url),
                             snippet=snippet,
                             source="duckduckgo"
                         ))
@@ -337,7 +345,7 @@ class WebSearchAgent:
                     if title and url:
                         results.append(SearchResult(
                             title=title,
-                            url=url,
+                            url=str(url),
                             snippet=snippet,
                             source="yandex"
                         ))
@@ -428,7 +436,7 @@ class WebSearchAgent:
                     if title and url:
                         results.append(SearchResult(
                             title=title,
-                            url=url,
+                            url=str(url),
                             snippet=snippet,
                             source="bing"
                         ))
@@ -499,7 +507,7 @@ class WebSearchAgent:
                     if title and url:
                         results.append(SearchResult(
                             title=title,
-                            url=url,
+                            url=str(url),
                             snippet=snippet,
                             source="searx"
                         ))

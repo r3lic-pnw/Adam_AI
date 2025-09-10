@@ -11,6 +11,7 @@ from datetime import datetime
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 import re
+import numpy as np
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -77,11 +78,13 @@ class OllamaGUI:
         self.audio_started = False
         self.speaking_thread = None
         self.vosk_model = None
+        self.recognizer = None
         self.stream = None
         self.control_vars = {}
         self.input_queue = queue.Queue()
         self.current_message = None
         self.status_labels = {}
+        self.voice_thread = None
         self.ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         self.original_stdout = sys.stdout
         self.original_stderr = sys.stderr
@@ -575,10 +578,12 @@ class OllamaGUI:
                 self.log_system_message("Voice input started successfully")
                 
                 # Start voice processing thread
-                threading.Thread(target=self.voice_processing_loop, daemon=True).start()
+                self.voice_thread = threading.Thread(target=self.voice_processing_loop, daemon=True)
+                self.voice_thread.start()
                 
             except Exception as e:
                 self.log_system_message(f"Voice processing error: {str(e)}")
+                self.voice_enabled = False
                 time.sleep(1)
         else:
             self.stop_voice_input()
@@ -589,6 +594,7 @@ class OllamaGUI:
             try:
                 self.log_system_message("Loading Vosk model...")
                 self.vosk_model = load_vosk_model()
+                self.recognizer = KaldiRecognizer(self.vosk_model, 16000)
                 self.log_system_message("Vosk model loaded successfully.")
             except Exception as e:
                 self.log_system_message(f"Failed to load Vosk model: {str(e)}")
@@ -601,6 +607,7 @@ class OllamaGUI:
             self.voice_button.config(text="Start Voice Input")
             self.voice_status.config(text="Voice: Disabled", foreground=DarkTheme.FG_MUTED)
             self.log_system_message("Voice input stopped")
+            
             # Stop audio stream if running
             if self.stream is not None:
                 try:
@@ -609,6 +616,11 @@ class OllamaGUI:
                 except Exception as e:
                     self.log_system_message(f"Error stopping audio stream: {str(e)}")
                 self.stream = None
+                
+            # Wait for voice thread to finish
+            if self.voice_thread and self.voice_thread.is_alive():
+                self.voice_thread.join(timeout=2.0)
+                
         except Exception as e:
             self.log_system_message(f"Error in stop_voice_input: {str(e)}")
     
@@ -870,44 +882,64 @@ Speech: {'ON' if controls.AVATAR_SPEECH else 'OFF'}"""
         self.root.after(100, self.process_queues)
     
     def voice_processing_loop(self):
-        """Process voice input in a background thread"""
+        """Process voice input in a background thread - Fixed version"""
         try:
-            if self.vosk_model is None:
+            if self.vosk_model is None or self.recognizer is None:
                 self.log_system_message("Vosk model not loaded. Cannot start voice recognition.")
                 return
 
-            recognizer = KaldiRecognizer(self.vosk_model, 16000)
-            self.stream = sd.InputStream(samplerate=16000, channels=1, dtype='int16')
-            self.stream.start()
-            self.log_system_message("Voice stream started. Listening for input...")
+            def audio_callback(indata, frames, time, status):
+                """Audio callback function to process incoming audio data"""
+                if status:
+                    self.log_system_message(f"Audio status: {status}")
+                
+                # Convert audio to bytes and process with Vosk
+                audio_data = (indata * 32767).astype(np.int16).tobytes()
+                
+                if self.recognizer is not None and hasattr(self.recognizer, "AcceptWaveform"):
+                    if self.recognizer.AcceptWaveform(audio_data):
+                        # Final result
+                        result = json.loads(self.recognizer.Result())
+                        text = result.get("text", "").strip()
+                        
+                        if text and len(text) >= 3:  # Minimum length check
+                            # Filter out bot name mentions
+                            if botname.lower() not in text.lower():
+                                # Queue the recognized text
+                                self.message_queue.put(("voice_input", username, text))
+                                self.input_queue.put(text)
+                                self.log_system_message(f"Voice recognized: {text}")
 
+            # Start audio stream with callback
+            self.stream = sd.InputStream(
+                samplerate=16000,
+                channels=1,
+                dtype='float32',
+                callback=audio_callback,
+                blocksize=4096
+            )
+            
+            self.stream.start()
+            self.log_system_message("Voice stream started successfully.")
+            
+            # Keep the thread alive while voice is enabled
             while self.voice_enabled:
-                data, _ = self.stream.read(4000)
-                if len(data) == 0:
-                    continue
-                if recognizer.AcceptWaveform(data):
-                    result = recognizer.Result()
-                    result_json = json.loads(result)
-                    text = result_json.get("text", "")
-                    if text:
-                        self.message_queue.put(("voice_input", username, text))
-                        self.input_queue.put(text)
-                else:
-                    # Partial result can be handled if desired
-                    pass
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
-            self.log_system_message("Voice stream stopped.")
+                time.sleep(0.1)
+                
         except Exception as e:
             self.log_system_message(f"Voice processing error: {str(e)}")
-            try:
-                if self.stream is not None:
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Clean up audio stream
+            if self.stream is not None:
+                try:
                     self.stream.stop()
                     self.stream.close()
-            except Exception:
-                pass
-            self.stream = None
+                    self.log_system_message("Voice stream stopped.")
+                except Exception as e:
+                    self.log_system_message(f"Error stopping voice stream: {str(e)}")
+                self.stream = None
 
     def on_closing(self):
         """Handle window closing"""

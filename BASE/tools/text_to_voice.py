@@ -26,7 +26,7 @@ def speak_through_vbcable(text):
     devices = sd.query_devices()
     cable_index = None
     for i, device in enumerate(devices):
-        if "CABLE Input" in device['name']:  # Match VB-Cable playback device
+        if "CABLE Input" in device.name:  # Match VB-Cable playback device
             cable_index = i
             break
 
