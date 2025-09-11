@@ -1,4 +1,4 @@
-# tts_vbcable.py
+# tts_vbcable.py - Improved version with better device detection and fallback
 
 import os
 import tempfile
@@ -7,13 +7,62 @@ import sounddevice as sd
 import soundfile as sf
 from personality.bot_info import voiceIndex
 
-def speak_through_vbcable(text):
+def list_audio_devices():
+    """List all available audio devices for debugging"""
+    devices = sd.query_devices()
+    print("\n=== Available Audio Devices ===")
+    for i, device in enumerate(devices):
+        device_info = f"[{i}] {device['name']}"
+        if device['max_outputs'] > 0:
+            device_info += " (Output)"
+        if device['max_inputs'] > 0:
+            device_info += " (Input)"
+        print(device_info)
+    print("===============================\n")
+    return devices
+
+def find_vb_cable_device():
+    """Find VB-Cable device with multiple search patterns"""
+    devices = sd.query_devices()
+    cable_patterns = [
+        "CABLE Input",
+        "VB-Audio Virtual Cable",
+        "Virtual Cable",
+        "CABLE-A Input",
+        "CABLE-B Input",
+        "VoiceMeeter Input",
+        "VoiceMeeter Aux Input"
+    ]
+    
+    for i, device in enumerate(devices):
+        device_name = device['name']
+        # Only consider output devices
+        if device['max_outputs'] > 0:
+            for pattern in cable_patterns:
+                if pattern.lower() in device_name.lower():
+                    print(f"Found VB-Cable device: [{i}] {device_name}")
+                    return i
+    
+    return None
+
+def speak_through_vbcable(text, use_fallback=True):
+    """
+    Speak text through VB-Cable with fallback options
+    
+    Args:
+        text: Text to speak
+        use_fallback: If True, fall back to default audio device if VB-Cable not found
+    """
     # Set up pyttsx3 with desired voice settings
     engine = pyttsx3.init()
     voices = engine.getProperty('voices')
     
-    # You may need to adjust the index depending on your system's installed voices
-    engine.setProperty('voice', voices[voiceIndex].id)  # Example: Microsoft David or Zira
+    # Ensure voiceIndex is valid
+    if voiceIndex < len(voices):
+        engine.setProperty('voice', voices[voiceIndex].id)
+    else:
+        print(f"Warning: voiceIndex {voiceIndex} out of range, using default voice")
+    
     engine.setProperty('rate', 200)
     engine.setProperty('volume', 1.0)
 
@@ -22,29 +71,97 @@ def speak_through_vbcable(text):
     engine.save_to_file(text, temp_wav)
     engine.runAndWait()
 
-    # Locate VB-Cable playback device
-    devices = sd.query_devices()
-    cable_index = None
-    for i, device in enumerate(devices):
-        if "CABLE Input" in device.name:  # Match VB-Cable playback device
-            cable_index = i
-            break
+    try:
+        # Try to find VB-Cable device
+        cable_index = find_vb_cable_device()
+        
+        if cable_index is None:
+            if use_fallback:
+                print("VB-Cable device not found, using default audio device")
+                cable_index = None  # Use default device
+            else:
+                # List available devices for debugging
+                list_audio_devices()
+                raise RuntimeError("VB-Cable device not found! Please install VB-Cable or check device names above.")
 
-    if cable_index is None:
-        raise RuntimeError("VB-Cable device not found!")
+        # Load and play the audio
+        data, samplerate = sf.read(temp_wav, dtype='float32')
+        
+        if cable_index is not None:
+            sd.play(data, samplerate, device=cable_index)
+            print(f"Playing audio through device [{cable_index}]")
+        else:
+            sd.play(data, samplerate)  # Use default device
+            print("Playing audio through default device")
+            
+        sd.wait()
 
-    # Load and play the audio through VB-Cable
-    data, samplerate = sf.read(temp_wav, dtype='float32')
-    sd.play(data, samplerate, device=cable_index)
-    sd.wait()
+        return "TTS executed successfully."
 
-    # Clean up
-    os.remove(temp_wav)
+    except Exception as e:
+        if use_fallback:
+            print(f"Audio playback failed ({e}), trying pyttsx3 direct output...")
+            # Fallback to direct pyttsx3 output
+            try:
+                engine.say(text)
+                engine.runAndWait()
+                return "TTS executed via pyttsx3 fallback."
+            except Exception as e2:
+                return f"All TTS methods failed: {e2}"
+        else:
+            raise e
+    
+    finally:
+        # Clean up temp file
+        try:
+            if os.path.exists(temp_wav):
+                os.remove(temp_wav)
+        except Exception as e:
+            print(f"Warning: Could not remove temp file {temp_wav}: {e}")
 
-    return "TTS executed successfully through VB-Cable."
+def test_audio_setup():
+    """Test function to diagnose audio setup"""
+    print("=== Audio Setup Diagnosis ===")
+    
+    # List all devices
+    devices = list_audio_devices()
+    
+    # Try to find VB-Cable
+    cable_index = find_vb_cable_device()
+    
+    if cable_index is not None:
+        print(f"✓ VB-Cable found at index {cable_index}")
+    else:
+        print("✗ VB-Cable not found")
+        print("\nTo fix this:")
+        print("1. Install VB-Cable from: https://vb-audio.com/Cable/")
+        print("2. Or install VoiceMeeter which includes virtual cables")
+        print("3. Restart your application after installation")
+    
+    # Test pyttsx3
+    try:
+        engine = pyttsx3.init()
+        voices = engine.getProperty('voices')
+        print(f"\n✓ pyttsx3 initialized with {len(voices)} voices available")
+        
+        from personality.bot_info import voiceIndex
+        if voiceIndex < len(voices):
+            print(f"✓ Voice index {voiceIndex} is valid: {voices[voiceIndex].name}")
+        else:
+            print(f"✗ Voice index {voiceIndex} is out of range (max: {len(voices)-1})")
+            
+    except Exception as e:
+        print(f"✗ pyttsx3 error: {e}")
+    
+    return cable_index is not None
 
-
-# Example usage (only if run directly, not when imported)
+# Example usage
 if __name__ == "__main__":
-    test_text = "This is a test of the VB-Cable text to speech system."
-    print(speak_through_vbcable(test_text))
+    # Run diagnosis
+    test_audio_setup()
+    
+    # Test TTS
+    test_text = "This is a test of the improved VB-Cable text to speech system with fallback support."
+    print(f"\nTesting TTS with: '{test_text}'")
+    result = speak_through_vbcable(test_text)
+    print(f"Result: {result}")

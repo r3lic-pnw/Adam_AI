@@ -71,6 +71,11 @@ class AICore:
     def set_warudo_manager(self, warudo_manager):
         """Set the Warudo manager for animations"""
         self.warudo_manager = warudo_manager
+        print(systemTColor + f"[Debug] Warudo manager set: {self.warudo_manager is not None}" + resetTColor)
+        if self.warudo_manager:
+            print(systemTColor + f"[Debug] Warudo WebSocket URL: {self.warudo_manager.controller.websocket_url}" + resetTColor)
+            print(systemTColor + f"[Debug] Warudo enabled: {self.warudo_manager.enabled}" + resetTColor)
+            print(systemTColor + f"[Debug] Warudo connected: {self.warudo_manager.controller.ws_connected}" + resetTColor)
 
     def set_minecraft_integration(self, minecraft_integration):
         """Set the Minecraft integration handler (deprecated - now created in __init__)"""
@@ -106,6 +111,39 @@ class AICore:
             print(systemTColor + f"[Controls] Loaded preset: {preset_name}" + resetTColor)
             print(systemTColor + self.control_manager.get_status_summary() + resetTColor)
         return success
+
+    def debug_animation_system(self, reply=""):
+        """Debug the animation system to identify issues"""
+        print(systemTColor + "[DEBUG ANIMATION SYSTEM]" + resetTColor)
+        print(f"  - Warudo Manager exists: {self.warudo_manager is not None}")
+        print(f"  - controls.AVATAR_ANIMATIONS: {self.controls.AVATAR_ANIMATIONS}")
+        print(f"  - global controls.AVATAR_ANIMATIONS: {controls.AVATAR_ANIMATIONS}")
+        
+        if self.warudo_manager:
+            print(f"  - WebSocket connected: {self.warudo_manager.controller.ws_connected}")
+            print(f"  - WebSocket URL: {self.warudo_manager.controller.websocket_url}")
+            print(f"  - Animation enabled: {self.warudo_manager.enabled}")
+            print(f"  - Available emotions: {len(self.warudo_manager.controller.available_emotions)}")
+            print(f"  - Available animations: {len(self.warudo_manager.controller.available_animations)}")
+            
+            # Test connection if not connected
+            if not self.warudo_manager.controller.ws_connected:
+                print("[DEBUG] WebSocket not connected, attempting reconnect...")
+                success = self.warudo_manager.connect()
+                print(f"[DEBUG] Reconnection {'successful' if success else 'failed'}")
+            
+            # Test keyword detection
+            if reply:
+                print(f"  - Testing reply: '{reply[:100]}...'")
+                reply_lower = reply.lower()
+                detected_keywords = []
+                for keyword, command in self.warudo_manager.animation_keywords.items():
+                    if keyword in reply_lower:
+                        detected_keywords.append((keyword, command))
+                print(f"  - Detected keywords: {detected_keywords}")
+        else:
+            print("  - Warudo Manager is None!")
+        print(systemTColor + "[END DEBUG]" + resetTColor)
 
     def _call_ollama(self, prompt: str, model: str, system_prompt: Optional[str] = None, image_data: str = "") -> str:
         """Call Ollama API with proper vision support and optimized parameters"""
@@ -264,9 +302,34 @@ class AICore:
             print(errorTColor + "[ERROR] Received empty response from model" + resetTColor)
             return None
 
-        # Handle animations first
+        # ENHANCED: Handle animations with comprehensive debugging
+        print(systemTColor + f"[ANIMATION CHECK] Starting animation processing..." + resetTColor)
+        print(f"[ANIMATION CHECK] controls.AVATAR_ANIMATIONS = {self.controls.AVATAR_ANIMATIONS}")
+        print(f"[ANIMATION CHECK] self.warudo_manager exists = {self.warudo_manager is not None}")
+        
         if self.controls.AVATAR_ANIMATIONS and self.warudo_manager:
-            self.warudo_manager.detect_and_send_animations(reply)
+            print(systemTColor + f"[ANIMATION] Conditions met, processing reply: '{reply[:50]}...'" + resetTColor)
+            print(f"[ANIMATION] WebSocket connected: {self.warudo_manager.controller.ws_connected}")
+            print(f"[ANIMATION] Warudo enabled: {self.warudo_manager.enabled}")
+            
+            # Debug the animation system with current reply
+            self.debug_animation_system(reply)
+            
+            try:
+                print(systemTColor + "[ANIMATION] Calling detect_and_send_animations..." + resetTColor)
+                self.warudo_manager.detect_and_send_animations(reply)
+                print(systemTColor + "[ANIMATION] Animation detection completed successfully" + resetTColor)
+            except Exception as e:
+                print(errorTColor + f"[ANIMATION ERROR] Animation failed: {e}" + resetTColor)
+                import traceback
+                traceback.print_exc()
+        else:
+            reasons = []
+            if not self.controls.AVATAR_ANIMATIONS:
+                reasons.append("AVATAR_ANIMATIONS is False")
+            if not self.warudo_manager:
+                reasons.append("warudo_manager is None")
+            print(systemTColor + f"[ANIMATION] Skipped - Reasons: {', '.join(reasons)}" + resetTColor)
 
         # FIXED: Minecraft command handling - use the integration properly
         if self.controls.PLAYING_MINECRAFT and self.controls.SEND_MINECRAFT_COMMAND:

@@ -4,7 +4,7 @@ const collectBlockPlugin = require("mineflayer-collectblock").plugin;
 
 // Environment variables
 const SERVER_HOST = process.env.MC_HOST || "localhost";
-const SERVER_PORT = parseInt(process.env.MC_PORT || "58179", 10);
+const SERVER_PORT = parseInt(process.env.MC_PORT || "55509", 10);
 const BOT_NAME = process.env.BOT_NAME || "Anna";
 const MC_DATA_VERSION = process.env.MC_PROTOCOL || "1.16";
 

@@ -80,6 +80,15 @@ async function handleAction(req, res, bot, actionParser) {
       }
     }
 
+    // Stop any ongoing collectBlock tasks
+    if (bot && bot.collectBlock) {
+      try {
+        bot.collectBlock.cancelTask();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
+
     return res.status(500).json({
       status: "error",
       error: error.message || "Action execution failed",
@@ -108,7 +117,7 @@ async function executeAction(bot, action) {
     case 'explore':
       return await executeExplore(bot);
     
-    // Gathering actions
+    // Gathering actions - now handled entirely within the gathering module
     case 'gather':
       return await executeGather(bot, action.resource);
     

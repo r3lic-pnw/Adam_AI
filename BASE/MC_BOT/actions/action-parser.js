@@ -1,97 +1,268 @@
-// Filename: actions/action-parser.js
+// Filename: actions/gathering-actions.js
+// Enhanced version with proper tool management
 
-// Enhanced action parsing with better natural language understanding
-function parseAction(text) {
-  if (!text || typeof text !== 'string') {
-    return null;
-  }
+const ACTION_TIMEOUT = 30000;
 
-  const input = text.toLowerCase().trim();
+async function executeGather(bot, resource) {
+  console.log(`⛏️ Gathering ${resource}`);
   
-  // Movement actions
-  if (input.includes('go to') || input.includes('move to') || input.includes('travel to')) {
-    const coords = input.match(/(-?\d+)[\s,]+(-?\d+)(?:[\s,]+(-?\d+))?/);
-    if (coords) {
-      const x = parseInt(coords[1]);
-      const y = parseInt(coords[2]);
-      const z = coords[3] ? parseInt(coords[3]) : null;
-      return { type: 'goto', x, y, z };
+  // Always use basic gathering - it's more reliable
+  return await executeBasicGather(bot, resource);
+}
+
+// Find and equip the best tool for the job
+async function equipBestTool(bot, resource) {
+  const inventory = bot.inventory.items();
+  let bestTool = null;
+  
+  // Define tool preferences for each resource
+  const toolPreferences = {
+    dirt: ['shovel', 'spade'],
+    stone: ['pickaxe', 'pick'],
+    wood: ['axe', 'hatchet'],
+    ore: ['pickaxe', 'pick']
+  };
+  
+  const preferredTools = toolPreferences[resource] || [];
+  
+  // Find the best tool in inventory
+  for (const toolType of preferredTools) {
+    const tool = inventory.find(item => 
+      item.name.toLowerCase().includes(toolType) && 
+      !item.name.includes('broken')
+    );
+    if (tool) {
+      bestTool = tool;
+      break;
     }
   }
   
-  if (input.includes('follow player') || input.includes('follow you')) {
-    return { type: 'follow' };
+  // If no specific tool found, try to find any tool that might work
+  if (!bestTool) {
+    const anyTool = inventory.find(item => 
+      (item.name.includes('shovel') || 
+       item.name.includes('pickaxe') || 
+       item.name.includes('axe')) &&
+      !item.name.includes('broken')
+    );
+    if (anyTool) {
+      bestTool = anyTool;
+    }
   }
   
-  if (input.includes('go near player') || input.includes('come over') || input.includes('approach')) {
-    return { type: 'approach' };
+  // Equip the tool if found
+  if (bestTool) {
+    try {
+      await bot.equip(bestTool, 'hand');
+      console.log(`🔧 Equipped ${bestTool.name} for ${resource} gathering`);
+      return bestTool.name;
+    } catch (err) {
+      console.warn(`⚠️ Failed to equip ${bestTool.name}: ${err.message}`);
+    }
   }
   
-  if (input.includes('stop') || input.includes('halt') || input.includes('wait')) {
-    return { type: 'stop' };
+  // If no tools available, unequip current item (use hands)
+  try {
+    await bot.unequip('hand');
+    console.log(`✋ Using hands to gather ${resource} (no suitable tools found)`);
+    return 'hands';
+  } catch (err) {
+    console.log(`🤷 Will use current item: ${bot.heldItem ? bot.heldItem.name : 'none'}`);
+    return bot.heldItem ? bot.heldItem.name : 'hands';
+  }
+}
+
+// Basic gathering using bot.dig() - most reliable method
+async function executeBasicGather(bot, resource) {
+  console.log(`🔧 Using basic gathering method for ${resource}`);
+  
+  const mcData = bot.mcData;
+  if (!mcData || !mcData.blocksByName) {
+    throw new Error("Minecraft data not available");
   }
 
-  // Resource gathering actions
-  if (input.includes('gather wood') || input.includes('collect wood') || input.includes('chop wood')) {
-    return { type: 'gather', resource: 'wood' };
-  }
-  
-  if (input.includes('gather stone') || input.includes('mine stone') || input.includes('collect stone')) {
-    return { type: 'gather', resource: 'stone' };
-  }
-  
-  if (input.includes('gather dirt') || input.includes('dig dirt') || input.includes('collect dirt')) {
-    return { type: 'gather', resource: 'dirt' };
-  }
-  
-  if (input.includes('gather ore') || input.includes('mine ore')) {
-    return { type: 'gather', resource: 'ore' };
-  }
-
-  // Crafting actions
-  if (input.includes('craft planks') || input.includes('make planks')) {
-    return { type: 'craft', item: 'planks' };
-  }
-  
-  if (input.includes('craft tools') || input.includes('make tools')) {
-    return { type: 'craft', item: 'tools' };
+  let targetBlocks = [];
+  switch (resource) {
+    case 'wood':
+      targetBlocks = ['oak_log', 'birch_log', 'spruce_log', 'jungle_log', 'acacia_log', 'dark_oak_log'];
+      break;
+    case 'stone':
+      targetBlocks = ['stone', 'cobblestone', 'andesite', 'diorite', 'granite'];
+      break;
+    case 'dirt':
+      targetBlocks = ['dirt', 'grass_block', 'coarse_dirt', 'podzol'];
+      break;
+    case 'ore':
+      targetBlocks = ['coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore', 'redstone_ore', 'lapis_ore'];
+      break;
+    default:
+      throw new Error(`Unknown resource type: ${resource}`);
   }
 
-  // Building actions
-  if (input.includes('place block') || input.includes('put down block')) {
-    return { type: 'place_block' };
-  }
+  // Find nearby block within reasonable range
+  let targetBlock = null;
+  let blockTypeName = '';
   
-  if (input.includes('break block') || input.includes('mine block')) {
-    return { type: 'break_block' };
+  for (const blockName of targetBlocks) {
+    const blockType = mcData.blocksByName[blockName];
+    if (blockType) {
+      targetBlock = bot.findBlock({
+        matching: blockType.id,
+        maxDistance: 16
+      });
+      if (targetBlock) {
+        blockTypeName = blockName;
+        console.log(`🎯 Found ${blockName} at ${targetBlock.position}`);
+        break;
+      }
+    }
   }
 
-  // Combat actions
-  if (input.includes('attack hostile') || input.includes('fight') || input.includes('defend')) {
-    return { type: 'attack' };
+  if (!targetBlock) {
+    throw new Error(`No ${resource} found within 16 blocks`);
   }
 
-  // Inventory actions
-  if (input.includes('drop item') || input.includes('throw item')) {
-    return { type: 'drop_item' };
+  // Equip the best tool for this resource
+  const equippedTool = await equipBestTool(bot, resource);
+
+  // Check if we need to move closer
+  const distance = bot.entity.position.distanceTo(targetBlock.position);
+  if (distance > 5) {
+    console.log(`🚶 Moving closer to ${blockTypeName} (${distance.toFixed(1)} blocks away)`);
+    
+    if (bot.pathfinder) {
+      try {
+        const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+        const defaultMove = new Movements(bot, mcData);
+        bot.pathfinder.setMovements(defaultMove);
+        
+        const goal = new goals.GoalNear(targetBlock.position.x, targetBlock.position.y, targetBlock.position.z, 3);
+        
+        // Wait for movement to complete
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            bot.pathfinder.setGoal(null);
+            resolve(); // Don't fail if movement times out, just try digging from current position
+          }, 10000);
+
+          bot.pathfinder.setGoal(goal);
+
+          const onGoalReached = () => {
+            clearTimeout(timeout);
+            bot.pathfinder.removeListener('goal_reached', onGoalReached);
+            bot.pathfinder.removeListener('path_stop', onPathStop);
+            resolve();
+          };
+
+          const onPathStop = () => {
+            clearTimeout(timeout);
+            bot.pathfinder.removeListener('goal_reached', onGoalReached);
+            bot.pathfinder.removeListener('path_stop', onPathStop);
+            resolve(); // Continue even if path stops
+          };
+
+          bot.pathfinder.on('goal_reached', onGoalReached);
+          bot.pathfinder.on('path_stop', onPathStop);
+        });
+      } catch (movementError) {
+        console.warn(`⚠️ Movement failed: ${movementError.message}, trying to dig from current position`);
+      }
+    }
   }
+
+  // Check final distance
+  const finalDistance = bot.entity.position.distanceTo(targetBlock.position);
+  if (finalDistance > 6) {
+    throw new Error(`Cannot reach ${resource} block - too far away (${finalDistance.toFixed(1)} blocks)`);
+  }
+
+  // Perform the actual digging with enhanced error handling
+  console.log(`⛏️ Starting to dig ${blockTypeName} with ${equippedTool}`);
   
-  if (input.includes('equip tool') || input.includes('hold tool')) {
-    return { type: 'equip_tool' };
-  }
+  return new Promise((resolve, reject) => {
+    // Shorter timeout for individual dig attempts
+    const timeout = setTimeout(() => {
+      console.warn(`⏰ Dig timeout for ${blockTypeName}`);
+      reject(new Error(`Digging took too long - the ${resource} block may be too hard or protected`));
+    }, 10000);
 
-  // Observation actions
-  if (input.includes('look around') || input.includes('scan area')) {
-    return { type: 'look_around' };
-  }
+    // Check if the block still exists and is the same
+    const currentBlock = bot.blockAt(targetBlock.position);
+    if (!currentBlock || currentBlock.name === 'air') {
+      clearTimeout(timeout);
+      reject(new Error(`${resource} block is no longer there`));
+      return;
+    }
+    
+    if (targetBlocks.includes(currentBlock.name)) {
+      console.log(`✅ Confirmed block is still ${currentBlock.name}`);
+    } else {
+      clearTimeout(timeout);
+      reject(new Error(`Block changed from ${blockTypeName} to ${currentBlock.name}`));
+      return;
+    }
+
+    // Start digging
+    bot.dig(currentBlock, (err) => {
+      clearTimeout(timeout);
+      if (err) {
+        console.error(`❌ Dig error: ${err.message}`);
+        
+        if (err.message.includes('far away') || err.message.includes('reach')) {
+          reject(new Error(`${resource} block is too far away to dig (${finalDistance.toFixed(1)} blocks)`));
+        } else if (err.message.includes('not diggable') || err.message.includes('cannot')) {
+          reject(new Error(`Cannot dig ${resource} block - may need a better tool or the block is protected`));
+        } else if (err.message.includes('line of sight')) {
+          reject(new Error(`Cannot see the ${resource} block clearly - something is in the way`));
+        } else {
+          reject(new Error(`Failed to dig ${resource}: ${err.message}`));
+        }
+      } else {
+        console.log(`✅ Successfully dug ${blockTypeName} using ${equippedTool}`);
+        resolve({
+          message: `Successfully gathered ${resource} (${blockTypeName}) using ${equippedTool}`,
+          details: { 
+            resource, 
+            blockType: blockTypeName,
+            position: targetBlock.position,
+            tool: equippedTool,
+            distance: finalDistance.toFixed(1),
+            method: 'basic_dig'
+          }
+        });
+      }
+    });
+  });
+}
+
+// Utility function to check what tools are available
+function checkAvailableTools(bot) {
+  const inventory = bot.inventory.items();
+  const tools = {
+    shovels: [],
+    pickaxes: [],
+    axes: [],
+    other: []
+  };
   
-  if (input.includes('explore area') || input.includes('search around')) {
-    return { type: 'explore' };
-  }
-
-  return { type: 'follow' }; // Default action to follow player if none matched
+  inventory.forEach(item => {
+    if (item.name.includes('shovel') || item.name.includes('spade')) {
+      tools.shovels.push(item.name);
+    } else if (item.name.includes('pickaxe') || item.name.includes('pick')) {
+      tools.pickaxes.push(item.name);
+    } else if (item.name.includes('axe')) {
+      tools.axes.push(item.name);
+    } else if (item.name.includes('sword') || item.name.includes('hoe')) {
+      tools.other.push(item.name);
+    }
+  });
+  
+  return tools;
 }
 
 module.exports = {
-  parseAction
+  executeGather,
+  executeBasicGather,
+  equipBestTool,
+  checkAvailableTools
 };
