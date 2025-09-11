@@ -1,0 +1,36 @@
+# Filename: gui_themes.py
+"""
+Theme and color definitions for the GUI application.
+"""
+
+class DarkTheme:
+    """Dark theme color definitions"""
+    LABEL = "#ffffff"
+    BG_DARK = "#2b2b2b"
+    BG_DARKER = "#1e1e1e"
+    BG_LIGHTER = "#3c3c3c"
+    FG_PRIMARY = "#FFFFFF"
+    FG_SECONDARY = "#7e7e7e"
+    FG_MUTED = "#C90000"
+    ACCENT_BLUE = "#00ff15"
+    ACCENT_GREEN = "#fbff00"
+    ACCENT_ORANGE = "#fb923c"
+    ACCENT_RED = "#ef4444"
+    ACCENT_YELLOW = "#fbbf24"
+    BORDER = "#000000"
+
+class LightTheme:
+    """Light theme color definitions (for future use)"""
+    LABEL = "#000000"
+    BG_DARK = "#f8f9fa"
+    BG_DARKER = "#e9ecef"
+    BG_LIGHTER = "#ffffff"
+    FG_PRIMARY = "#000000"
+    FG_SECONDARY = "#6c757d"
+    FG_MUTED = "#dc3545"
+    ACCENT_BLUE = "#0d6efd"
+    ACCENT_GREEN = "#198754"
+    ACCENT_ORANGE = "#fd7e14"
+    ACCENT_RED = "#dc3545"
+    ACCENT_YELLOW = "#ffc107"
+    BORDER = "#dee2e6"

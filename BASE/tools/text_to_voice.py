@@ -13,9 +13,9 @@ def list_audio_devices():
     print("\n=== Available Audio Devices ===")
     for i, device in enumerate(devices):
         device_info = f"[{i}] {device['name']}"
-        if device['max_outputs'] > 0:
+        if device['max_output_channels'] > 0:
             device_info += " (Output)"
-        if device['max_inputs'] > 0:
+        if device['max_input_channels'] > 0:
             device_info += " (Input)"
         print(device_info)
     print("===============================\n")
@@ -37,7 +37,7 @@ def find_vb_cable_device():
     for i, device in enumerate(devices):
         device_name = device['name']
         # Only consider output devices
-        if device['max_outputs'] > 0:
+        if device['max_output_channels'] > 0:
             for pattern in cable_patterns:
                 if pattern.lower() in device_name.lower():
                     print(f"Found VB-Cable device: [{i}] {device_name}")
