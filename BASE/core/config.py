@@ -11,7 +11,7 @@ from personality.bot_info import botname, username, textmodel, visionmodel, embe
 def load_config():
     """Load configuration from JSON file"""
     # Find project root (two levels up from this file: core -> botname_AI)
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
     config_path = project_root / "personality" / "config.json"
     
     with open(config_path, 'r') as f:

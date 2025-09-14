@@ -22,11 +22,29 @@
     "max_context_entries": 6,
     "recent_convo_limit": 6
   },
-    "mindcraft": {
-    "enabled": true,
+  "memory": {
+    "max_context_entries": 6,
+    "embedding_search_results": 3,
+    "base_memory_search_results": 3,
+    "auto_summarize_threshold": 50,
+    "include_base_memory": false
+  },
+  "warudo": {
+    "websocket_url": "ws://127.0.0.1:19190",
+    "enabled": false,
+    "auto_connect": false,
+    "connection_timeout": 2.0
+  },
+  "mindcraft": {
+    "enabled": false,
     "host": "localhost",
-    "port": 3000, 
+    "port": 3001, 
     "bot_name": "Anna",
-    "debug": true
+    "debug": false
+  },
+  "features": {
+    "use_search": false,
+    "use_vision": false,
+    "use_warudo": false
   }
 }
