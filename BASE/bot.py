@@ -61,7 +61,7 @@ class VTuberAI:
 
     def _print_current_settings(self):
         print(systemTColor + "[Settings] Current configuration:" + resetTColor)
-        print(toolTColor + f"  Vision: {controls.USE_VISION}, Search: {controls.USE_SEARCH}, Memory Search: {controls.USE_MEMORY_SEARCH}" + resetTColor)
+        print(toolTColor + f"  Vision: {controls.USE_VISION}, Search: {controls.USE_SEARCH}, Memory Search: {controls.USE_LONG_MEMORY}" + resetTColor)
         print(toolTColor + f"  Minecraft: {controls.PLAYING_MINECRAFT}, Group Chat: {controls.IN_GROUP_CHAT}" + resetTColor)
         print(toolTColor + f"  Animations: {controls.AVATAR_ANIMATIONS}, Speech: {controls.AVATAR_SPEECH}" + resetTColor)
         print(toolTColor + f"  Save Memory: {controls.SAVE_MEMORY}" + resetTColor)
@@ -135,28 +135,6 @@ class VTuberAI:
             self._print_help()
             return True
             
-        if command.startswith("/preset "):
-            preset_name = command[8:].strip()
-            success = self.control_manager.load_preset(preset_name)
-            if success:
-                print(systemTColor + f"[Settings] Loaded preset: {preset_name}" + resetTColor)
-                self._print_current_settings()
-            else:
-                available = ", ".join(self.control_manager.get_available_presets())
-                print(errorTColor + f"[Settings] Unknown preset: {preset_name}. Available: {available}" + resetTColor)
-            return True
-        
-        if command == "/presets":
-            available = ", ".join(self.control_manager.get_available_presets())
-            print(systemTColor + f"[Settings] Available presets: {available}" + resetTColor)
-            return True
-            
-        if command == "/reset":
-            self.control_manager.reset_to_defaults()
-            print(systemTColor + "[Settings] Reset to defaults" + resetTColor)
-            self._print_current_settings()
-            return True
-            
         if command == "/validate":
             is_valid = self.control_manager.validate_all_configs()
             if is_valid:
@@ -169,7 +147,7 @@ class VTuberAI:
         toggles = {
             "/toggle_vision": ("USE_VISION", "Vision"),
             "/toggle_search": ("USE_SEARCH", "Web Search"),
-            "/toggle_memory": ("USE_MEMORY_SEARCH", "Memory Search"),
+            "/toggle_memory": ("USE_LONG_MEMORY", "Memory Search"),
             "/toggle_minecraft": ("PLAYING_MINECRAFT", "Minecraft Mode"),
             "/toggle_groupchat": ("IN_GROUP_CHAT", "Group Chat"),
             "/toggle_animations": ("AVATAR_ANIMATIONS", "Avatar Animations"),
@@ -210,15 +188,6 @@ class VTuberAI:
   /toggle_save_memory  - Toggle memory saving
   /toggle_logs         - Toggle debug logging
   
-{toolTColor}Preset Commands:{resetTColor}
-  /presets             - List available presets
-  /preset <name>       - Load a preset configuration
-  /reset               - Reset to default settings
-  /validate            - Validate current configuration
-  
-{toolTColor}Available Presets:{resetTColor}
-  minimal, standard, full_features, minecraft, group_chat, debug
-  
 {toolTColor}Memory Commands:{resetTColor}
   /memory_status       - Show memory statistics
   /search_memory <query> - Search memory for specific content
@@ -231,9 +200,7 @@ class VTuberAI:
         print(help_text)
 
     def _interaction_loop(self):
-        print(systemTColor + "[AI] Ready for both voice and text input..." + resetTColor)
-        print(systemTColor + "[INFO] Available commands: /help for full list, /settings to view current config" + resetTColor)
-        print(systemTColor + "[INFO] Voice: Speak naturally | Text: Type and press Enter | Exit: Type 'exit'" + resetTColor)
+        print(systemTColor + "[SYSTEM] Listening..." + resetTColor)
         
         if self.warudo_manager:
             status = "connected" if self.warudo_manager.controller.ws_connected else "ready (use /warudo_connect if needed)"
@@ -241,9 +208,6 @@ class VTuberAI:
         
         if controls.PLAYING_MINECRAFT:
             print(systemTColor + f"[Minecraft] Integration active - endpoint: http://127.0.0.1:3001/api/act" + resetTColor)
-        
-        if controls.IN_GROUP_CHAT:
-            print(systemTColor + "[Group Chat] Group chat mode enabled - conversation history will be tracked" + resetTColor)
         
         while not self.shutdown_flag.is_set():
             try:
@@ -272,19 +236,9 @@ class VTuberAI:
                 self.last_interaction = time.time()
                 
                 if user_text.lower() == "exit":
-                    print(systemTColor + "[INFO] 'exit' command received. Exiting loop." + resetTColor)
+                    print(systemTColor + "[SYSTEM] 'exit' command received. Exiting loop." + resetTColor)
                     self.shutdown_flag.set()
                     break
-                
-                # Handle various command types
-                if self.memory_command_handler.handle_command(user_text):
-                    continue
-                
-                if self._handle_warudo_commands(user_text):
-                    continue
-                    
-                if self._handle_control_commands(user_text):
-                    continue
                     
                 print(userTColor + f"{username}: {user_text}" + resetTColor)
                 
@@ -300,14 +254,14 @@ class VTuberAI:
                     if reply:
                         print(botTColor + f"{botname}: {reply}" + resetTColor)
                         
-                        if controls.AVATAR_SPEECH and len(reply) < 600:
+                        if controls.AVATAR_SPEECH and len(reply) < 1000:
                             print(systemTColor + "[SPEECH] Initiating text-to-speech..." + resetTColor)
                             self.speaking_thread = threading.Thread(
                                 target=speak_through_vbcable, args=(reply,), daemon=True
                             )
                             self.speaking_thread.start()
-                        elif len(reply) >= 600:
-                            print(systemTColor + "[SPEECH] Reply too long for speech (over 600 chars). Text only." + resetTColor)
+                        elif len(reply) >= 1000:
+                            print(systemTColor + "[SPEECH] Reply too long for speech (over 1000 chars). Text only." + resetTColor)
                     else:
                         print(errorTColor + "[ERROR] No response generated for user input." + resetTColor)
 
@@ -324,15 +278,14 @@ class VTuberAI:
                 traceback.print_exc()
                 break
 
-        print(systemTColor + "[INFO] Interaction loop terminated." + resetTColor)
+        print(systemTColor + "[SYSTEM] Interaction loop terminated." + resetTColor)
 
     def run(self):
-        print(systemTColor + "[INFO] Starting VTuber AI with Dynamic Control System" + resetTColor)
-        print(systemTColor + "[INFO] Voice + Text Input enabled. Type 'exit' or press Ctrl+C to stop." + resetTColor)
-        print(systemTColor + "[INFO] Available commands: /help, /settings, /preset <name>, /toggle_* commands" + resetTColor)
+        print(systemTColor + "[SYSTEM] Starting VTuber AI with Dynamic Control System" + resetTColor)
+        print(systemTColor + "[SYSTEM] Voice + Text Input enabled. Type 'exit' or press Ctrl+C to stop." + resetTColor)
         
         if self.warudo_manager:
-            print(systemTColor + "[INFO] Warudo animations available - will auto-detect keywords in responses" + resetTColor)
+            print(systemTColor + "[SYSTEM] Warudo animations available - will auto-detect keywords in responses" + resetTColor)
 
         try:
             if not self.audio_started:
@@ -359,7 +312,7 @@ class VTuberAI:
                 while processing_thread.is_alive() and not self.shutdown_flag.is_set():
                     processing_thread.join(timeout=1.0)
             except KeyboardInterrupt:
-                print(systemTColor + "\n[INFO] Keyboard interrupt received (Ctrl+C). Shutting down gracefully..." + resetTColor)
+                print(systemTColor + "\n[SYSTEM] Keyboard interrupt received (Ctrl+C). Shutting down gracefully..." + resetTColor)
                 self.shutdown_flag.set()
                 self.processing = False
                 
@@ -374,13 +327,13 @@ class VTuberAI:
                     print(systemTColor + "[WARNING] Processing thread did not stop gracefully within 3 seconds." + resetTColor)
 
         except KeyboardInterrupt:
-            print(systemTColor + "\n[INFO] Keyboard interrupt during initialization. Exiting..." + resetTColor)
+            print(systemTColor + "\n[SYSTEM] Keyboard interrupt during initialization. Exiting..." + resetTColor)
         except Exception as e:
             print(errorTColor + f"[ERROR] Unexpected error during execution: {e}" + resetTColor)
             import traceback
             traceback.print_exc()
         finally:
-            print(systemTColor + "[INFO] Starting cleanup..." + resetTColor)
+            print(systemTColor + "[SYSTEM] Starting cleanup..." + resetTColor)
             self.shutdown_flag.set()
             try:
                 self.raw_queue.put(b"__EXIT__")
@@ -394,7 +347,7 @@ class VTuberAI:
             if self.audio_started:
                 self.stop_stream()
             
-            print(systemTColor + "[INFO] Cleanup completed. Goodbye!" + resetTColor)
+            print(systemTColor + "[SYSTEM] Cleanup completed. Goodbye!" + resetTColor)
 
 if __name__ == "__main__":
     VTuberAI().run()

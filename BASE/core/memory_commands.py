@@ -226,8 +226,6 @@ class MemoryCommandHandler:
 
     def _handle_warudo_command(self, command: str) -> bool:
         """Handle Warudo-related commands"""
-        # This would need to be implemented with access to warudo_manager
-        # For now, just indicate the command was recognized
         print(errorTColor + "[Warudo] Command recognized but not implemented in this handler." + resetTColor)
         print(errorTColor + "[Warudo] Use the interface-specific warudo manager directly." + resetTColor)
         return True

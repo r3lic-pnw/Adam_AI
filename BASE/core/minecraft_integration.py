@@ -372,7 +372,6 @@ class MinecraftIntegration:
             print(toolTColor + f"[Minecraft Action] Sending action: '{action_text}'" + resetTColor)
         
         try:
-            # FIXED: Use correct payload format with 'text' field
             payload = {
                 "text": action_text  # Changed from "action" to "text"
             }
@@ -502,99 +501,6 @@ class MinecraftIntegration:
         
         return found_actions
 
-    # async def send_action(self, action_text: str) -> Optional[Dict]:
-    #     """Send a natural language action to the Minecraft bot for execution"""
-    #     if LOG_MINECRAFT_EXECUTION:
-    #         print(toolTColor + f"[Minecraft Action] Sending action: '{action_text}'" + resetTColor)
-        
-    #     try:
-    #         # FIXED: Use correct payload format
-    #         payload = {
-    #             "action": action_text
-    #         }
-            
-    #         response = await self._make_request('POST', '/api/action', payload, timeout=60)
-            
-    #         if response:
-    #             if LOG_MINECRAFT_EXECUTION:
-    #                 status = response.get('status', 'unknown')
-    #                 message = response.get('message', 'No message')
-    #                 print(toolTColor + f"[Minecraft Action] Response: {status} - {message}" + resetTColor)
-    #             return response
-    #         else:
-    #             if LOG_MINECRAFT_EXECUTION:
-    #                 print(errorTColor + "[Minecraft Action] No response from bot" + resetTColor)
-    #             return {"status": "error", "error": "No response from bot"}
-                
-    #     except Exception as e:
-    #         if LOG_MINECRAFT_EXECUTION:
-    #             print(errorTColor + f"[Minecraft Action] Error sending action: {e}" + resetTColor)
-    #         return {"status": "error", "error": f"Failed to send action: {e}"}
-
-    # async def send_minecraft_chat(self, message: str):
-    #     """Send a message to Minecraft game chat"""
-    #     if not PLAYING_MINECRAFT:
-    #         return
-            
-    #     try:
-    #         # Split long messages into chunks (Minecraft chat has character limits)
-    #         max_length = 100  # Conservative limit for Minecraft chat
-    #         message_chunks = []
-            
-    #         # Clean the message of any formatting that might break chat
-    #         clean_message = re.sub(r'[^\x00-\x7F]+', '', message)  # Remove non-ASCII
-    #         clean_message = clean_message.replace('\n', ' ').replace('\r', '')  # Remove newlines
-            
-    #         if len(clean_message) <= max_length:
-    #             message_chunks = [clean_message]
-    #         else:
-    #             # Split on sentences first, then words if needed
-    #             sentences = re.split(r'[.!?]+', clean_message)
-    #             current_chunk = ""
-                
-    #             for sentence in sentences:
-    #                 sentence = sentence.strip()
-    #                 if not sentence:
-    #                     continue
-                        
-    #                 if len(current_chunk + sentence) <= max_length:
-    #                     current_chunk += sentence + ". "
-    #                 else:
-    #                     if current_chunk:
-    #                         message_chunks.append(current_chunk.strip())
-    #                     current_chunk = sentence[:max_length] + ". "
-                
-    #             if current_chunk:
-    #                 message_chunks.append(current_chunk.strip())
-            
-    #         # Send each chunk as a separate chat message
-    #         for i, chunk in enumerate(message_chunks):
-    #             if not chunk.strip():
-    #                 continue
-                    
-    #             # FIXED: Use correct payload format for chat messages
-    #             chat_payload = {
-    #                 "action": f"/say {chunk}"
-    #             }
-                
-    #             response = await self._make_request('POST', '/api/action', chat_payload, timeout=10)
-                
-    #             if response and response.get('status') == 'success':
-    #                 if LOG_MINECRAFT_EXECUTION:
-    #                     print(systemTColor + f"[Minecraft Chat] Sent message chunk {i+1}/{len(message_chunks)}" + resetTColor)
-    #             else:
-    #                 if LOG_MINECRAFT_EXECUTION:
-    #                     error_msg = response.get('error', 'Unknown error') if response else 'No response'
-    #                     print(errorTColor + f"[Minecraft Chat] Failed to send chunk {i+1}: {error_msg}" + resetTColor)
-                
-    #             # Small delay between chunks to avoid spam
-    #             if len(message_chunks) > 1:
-    #                 await asyncio.sleep(0.5)
-                
-    #     except Exception as e:
-    #         if LOG_MINECRAFT_EXECUTION:
-    #             print(errorTColor + f"[Minecraft Chat] Error sending message: {e}" + resetTColor)
-    
     async def enhance_memory_context(self, user_text: str, context_to_save: str) -> str:
         """Enhance memory context with concise Minecraft-specific information"""
         if self.last_minecraft_vision:

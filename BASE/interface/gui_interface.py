@@ -81,17 +81,17 @@ class OllamaGUI:
         
         # Initialize component managers
         self.voice_manager = VoiceManager(self.message_queue, self.input_queue, self.log_system_message)
-        self.control_panel_manager = ControlPanelManager(self.ai_core, self.control_manager, self.log_system_message)
+        self.control_panel_manager = ControlPanelManager(self.ai_core, self.log_system_message)
         
         self.warudo = None
         if WarudoManager and WEBSOCKET_AVAILABLE:
             try:
-                # adjust URL if your Warudo uses a different host/port
                 self.warudo = WarudoManager("ws://127.0.0.1:19190", auto_connect=True, timeout=2.0)
                 if self.warudo and getattr(self.warudo, "controller", None) and not self.warudo.controller.ws_connected:
                     self.log_system_message("Warudo available but not connected (attempted quick connect).")
                 else:
                     self.log_system_message("Warudo manager initialized and connected.")
+                self.ai_core.set_warudo_manager(self.warudo)
             except Exception as e:
                 self.warudo = None
                 self.log_system_message(f"Failed to initialize Warudo manager: {e}")
@@ -106,12 +106,10 @@ class OllamaGUI:
         self.log_system_message("GUI initialized successfully")
 
     def apply_dark_theme(self):
-        """Apply dark theme to the application"""
         self.root.configure(bg=DarkTheme.BG_DARK)
         style = ttk.Style()
         style.theme_use('clam')
 
-        # General widget styling
         style.configure('TFrame', background=DarkTheme.BG_DARK)
         style.configure('TLabel', background=DarkTheme.BG_DARK, foreground=DarkTheme.FG_PRIMARY)
         style.configure('TButton', background=DarkTheme.BG_LIGHTER, foreground=DarkTheme.FG_PRIMARY,
@@ -125,7 +123,6 @@ class OllamaGUI:
                  background=[('active', DarkTheme.BG_DARK)],
                  foreground=[('active', DarkTheme.FG_PRIMARY)])
 
-        # Custom dark LabelFrame with black borders
         style.element_create("DarkFrame.border", "from", "clam")
         style.layout("Dark.TLabelframe",
                      [('DarkFrame.border', {'sticky': 'nswe', 'border': '1', 'children':
@@ -140,55 +137,23 @@ class OllamaGUI:
                         foreground=DarkTheme.FG_PRIMARY)
 
     def create_menu(self):
-        """Create menu bar with control options"""
         menubar = Menu(self.root)
         self.root.config(menu=menubar)
         
-        # Controls menu
         controls_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Controls", menu=controls_menu)
         
-        # Presets submenu
-        presets_menu = Menu(controls_menu, tearoff=0)
-        controls_menu.add_cascade(label="Load Preset", menu=presets_menu)
-        
-        for preset in self.control_manager.get_available_presets():
-            presets_menu.add_command(
-                label=preset.replace('_', ' ').title(),
-                command=lambda p=preset: self.load_preset(p)
-            )
-        
         controls_menu.add_separator()
-        controls_menu.add_command(label="Reset to Defaults", command=self.reset_controls)
         controls_menu.add_command(label="Show Status", command=self.show_status_dialog)
         controls_menu.add_separator()
         controls_menu.add_command(label="Validate Configuration", command=self.validate_config)
         
-        # Tools menu
         tools_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Clear Chat", command=self.clear_chat)
         tools_menu.add_command(label="Export Settings", command=self.export_settings)
 
-    def load_preset(self, preset_name):
-        """Load a control preset"""
-        success = self.control_manager.load_preset(preset_name)
-        if success:
-            self.control_panel_manager.update_control_display()
-            self.log_system_message(f"Loaded preset: {preset_name}")
-            messagebox.showinfo("Preset Loaded", f"Successfully loaded '{preset_name}' preset")
-        else:
-            messagebox.showerror("Error", f"Failed to load preset: {preset_name}")
-
-    def reset_controls(self):
-        """Reset controls to defaults"""
-        if messagebox.askyesno("Reset Controls", "Reset all controls to default values?"):
-            self.control_manager.reset_to_defaults()
-            self.control_panel_manager.update_control_display()
-            self.log_system_message("Controls reset to defaults")
-
     def show_status_dialog(self):
-        """Show current status in a dialog"""
         status = self.control_manager.get_status_summary()
         dialog = tk.Toplevel(self.root)
         dialog.title("Current Status")
@@ -208,7 +173,6 @@ class OllamaGUI:
         text_widget.config(state=tk.DISABLED)
 
     def validate_config(self):
-        """Validate current configuration"""
         is_valid = self.control_manager.validate_all_configs()
         if is_valid:
             messagebox.showinfo("Validation", "Configuration is valid!")
@@ -216,7 +180,6 @@ class OllamaGUI:
             messagebox.showwarning("Validation", "Configuration has issues. Check system log for details.")
 
     def export_settings(self):
-        """Export current settings to a file"""
         try:
             settings = self.control_manager.get_all_features()
             filename = f"ai_settings_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -227,35 +190,27 @@ class OllamaGUI:
             messagebox.showerror("Export Error", f"Failed to export settings: {e}")
 
     def setup_gui(self):
-        """Setup the main GUI layout"""
         self.create_main_frames()
         self.create_control_panel()
         self.create_system_panel()
         self.create_chat_panel()
 
     def create_main_frames(self):
-        """Create the main layout frames: left (controls), center (system), right (chat)"""
-        # Left frame for controls
         self.left_frame = ttk.Frame(self.root, width=400)
         self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5)
         self.left_frame.pack_propagate(False)
         
-        # Center frame for system information
         self.center_frame = ttk.Frame(self.root, width=450)
         self.center_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5)
         self.center_frame.pack_propagate(False)
         
-        # Right frame for chat
         self.right_frame = ttk.Frame(self.root)
         self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
     def create_control_panel(self):
-        """Create control panel using the control panel manager"""
         self.control_panel_manager.create_control_panel(self.left_frame)
 
     def create_system_panel(self):
-        """Create system information panel in center column"""
-        # System log
         system_frame = ttk.LabelFrame(self.center_frame, text="System Information", style="Dark.TLabelframe")
         system_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
@@ -274,7 +229,6 @@ class OllamaGUI:
         )
         self.system_log.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Statistics panel
         stats_frame = ttk.LabelFrame(self.center_frame, text="Statistics", style="Dark.TLabelframe")
         stats_frame.pack(fill=tk.X, pady=(0, 5))
         
@@ -289,13 +243,11 @@ class OllamaGUI:
         )
         self.stats_label.pack(fill=tk.X, padx=5, pady=5)
         
-        # Voice control panel
         self.voice_manager.create_voice_panel(self.center_frame)
         
         self.update_stats()
 
     def create_chat_panel(self):
-        """Create chat panel in right column"""
         chat_frame = ttk.LabelFrame(self.right_frame, text=f"Chat with {botname}", style="Dark.TLabelframe")
         chat_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
@@ -312,18 +264,15 @@ class OllamaGUI:
         )
         self.chat_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Configure text tags
         self.chat_display.tag_configure("user", foreground=DarkTheme.ACCENT_BLUE, font=("Segoe UI", 11, "bold"))
         self.chat_display.tag_configure("bot", foreground=DarkTheme.ACCENT_ORANGE, font=("Segoe UI", 11, "bold"))
         self.chat_display.tag_configure("system", foreground=DarkTheme.FG_MUTED, font=("Segoe UI", 9, "italic"))
         self.chat_display.tag_configure("error", foreground=DarkTheme.ACCENT_RED, font=("Segoe UI", 10, "bold"))
         self.chat_display.tag_configure("voice", foreground=DarkTheme.ACCENT_GREEN, font=("Segoe UI", 10, "italic"))
         
-        # Input panel
         self.create_input_panel()
 
     def create_input_panel(self):
-        """Create input panel for chat"""
         input_frame = ttk.Frame(self.right_frame)
         input_frame.pack(fill=tk.X, pady=(5, 0))
         
@@ -372,55 +321,37 @@ class OllamaGUI:
         
         self.input_text.bind("<Control-Return>", lambda e: self.send_message())
         self.input_text.bind("<Return>", self.handle_return)
-        
+
     def handle_return(self, event):
-        """Handle Return key press"""
-        if event.state & 0x1:  # Shift key
+        if event.state & 0x1:
             return None
         else:
             self.send_message()
             return "break"
-    
+
     def send_message(self):
-        """Send message to AI"""
         message = self.input_text.get("1.0", tk.END).strip()
-        
         if not message:
             return
-        
-        # Clear input
         self.input_text.delete("1.0", tk.END)
-        
-        # Display user message immediately
         self.add_chat_message(f"{username}", message, "user")
-        
-        # Queue for processing
         self.input_queue.put(message)
-    
+
     def process_message(self, message):
-        """Process message in background thread"""
         try:
             import asyncio
-            
-            # Create new event loop for this thread
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
-            # Generate response
             response = loop.run_until_complete(self.ai_core.generate_response(message))
             
             if response:
-                # Queue the response for GUI thread
                 self.message_queue.put(("bot", botname, response))
-
                 try:
                     if getattr(self, 'warudo', None):
-                        # run detection in a separate thread so it doesn't block the loop
                         threading.Thread(target=self.warudo.detect_and_send_animations, args=(response,), daemon=True).start()
                 except Exception as e:
                     self.message_queue.put(("system", None, f"Warudo error: {e}"))
                 
-                # Handle text-to-speech if enabled
                 if controls.AVATAR_SPEECH and len(response) < 600:
                     self.message_queue.put(("system", None, "Initiating text-to-speech..."))
                     self.speaking_thread = threading.Thread(
@@ -431,13 +362,11 @@ class OllamaGUI:
                     self.message_queue.put(("system", None, "Reply too long for speech (over 600 chars). Text only."))
             else:
                 self.message_queue.put(("error", "System", "No response generated"))
-                
         except Exception as e:
             self.message_queue.put(("error", "Error", f"Failed to process message: {str(e)}"))
             import traceback
             traceback.print_exc()
         finally:
-            # Signal processing complete
             self.message_queue.put(("processing_complete", None, None))
             self.current_message = None
     
@@ -510,12 +439,11 @@ Endpoint: {self.config.ollama_endpoint}
 
 Controls Active: {enabled_controls}/{total_controls}
 Voice: {'ON' if self.voice_manager.voice_enabled else 'OFF'}
-Preset: {self.get_current_preset_guess()}
 
 Key Features:
 Vision: {'ON' if controls.USE_VISION else 'OFF'}
 Search: {'ON' if controls.USE_SEARCH else 'OFF'}
-Memory: {'ON' if controls.USE_MEMORY_SEARCH else 'OFF'}
+Memory: {'ON' if controls.USE_LONG_MEMORY else 'OFF'}
 Minecraft: {'ON' if controls.PLAYING_MINECRAFT else 'OFF'}
 Speech: {'ON' if controls.AVATAR_SPEECH else 'OFF'}"""
             
@@ -526,40 +454,6 @@ Speech: {'ON' if controls.AVATAR_SPEECH else 'OFF'}"""
         
         # Schedule next update
         self.root.after(5000, self.update_stats)
-
-    def get_current_preset_guess(self):
-        """Try to guess current preset based on settings"""
-        current_settings = self.control_manager.get_all_features()
-        
-        # Check against known presets
-        presets = {
-            'minimal': {
-                'USE_SEARCH': False,
-                'USE_VISION': False,
-                'USE_MEMORY_SEARCH': False,
-                'SAVE_MEMORY': False,
-            },
-            'standard': {
-                'USE_SEARCH': True,
-                'USE_VISION': True,
-                'USE_MEMORY_SEARCH': True,
-                'SAVE_MEMORY': True,
-            },
-            'minecraft': {
-                'PLAYING_MINECRAFT': True,
-                'USE_VISION': True,
-            },
-            'debug': {
-                'LOG_TOOL_EXECUTION': True,
-                'LOG_PROMPT_CONSTRUCTION': True,
-            }
-        }
-        
-        for preset_name, preset_settings in presets.items():
-            if all(current_settings.get(key) == value for key, value in preset_settings.items()):
-                return preset_name
-        
-        return "Custom"
     
     def start_queue_processor(self):
         """Start processing queued messages"""

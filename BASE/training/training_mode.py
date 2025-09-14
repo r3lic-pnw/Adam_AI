@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 
 from BASE.tools.query import web_search_summary
 from BASE.memory_methods.summarizer import summarize_memory
-from BASE.memory_methods.memory_manipulation import MemoryManager
+from BASE.memory_methods.memory_manager import MemoryManager
 from BASE.tools.animate import WarudoManager
 from BASE.resources.help import help_msg
 

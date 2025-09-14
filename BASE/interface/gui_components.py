@@ -1,6 +1,7 @@
 # Filename: gui_components.py
 """
 Component managers for voice processing and control panel functionality.
+Updated to match ai_core.py refactoring with day-based memory system and new controls.
 """
 
 import tkinter as tk
@@ -186,11 +187,11 @@ class VoiceManager:
 
 
 class ControlPanelManager:
-    """Manages the control panel with all boolean variables"""
+    """Manages the control panel with all boolean variables - updated for ai_core.py refactoring"""
     
-    def __init__(self, ai_core, control_manager, log_function):
+    def __init__(self, ai_core, log_function):
         self.ai_core = ai_core
-        self.control_manager = control_manager
+        self.control_manager = ai_core.get_control_manager()
         self.log_system_message = log_function
         
         self.control_vars = {}
@@ -220,27 +221,23 @@ class ControlPanelManager:
             control_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         control_canvas.bind("<MouseWheel>", _on_mousewheel)
         
-        # Define control groups with all variables from controls.py
+        # Updated control groups to match ai_core.py refactoring
         control_groups = {
             "AI Capabilities": [
                 ("Web Search", "USE_SEARCH", "Enable web search functionality"),
                 ("Computer Vision", "USE_VISION", "Enable computer vision/screenshot analysis"),
-                ("Base Memory", "USE_BASE_MEMORY", "Enable base memory system"),
-                ("Memory Search", "USE_MEMORY_SEARCH", "Enable enhanced memory search"),
+                ("Long Memory Search", "USE_LONG_MEMORY", "Enable long-term memory search (daily summaries + base knowledge)"),
             ],
             "Game Integration": [
-                ("Playing Game (Legacy)", "PLAYING_GAME", "Legacy flag for game integration"),
                 ("Minecraft Mode", "PLAYING_MINECRAFT", "Enable Minecraft bot integration"),
-                ("Group Chat Mode", "IN_GROUP_CHAT", "Enable group chat conversation mode"),
             ],
             "Prompt Components": [
                 ("System Prompt", "INCLUDE_SYSTEM_PROMPT", "Include system/personality prompt"),
                 ("Vision Results", "INCLUDE_VISION_RESULTS", "Include vision analysis in prompt"),
                 ("Search Results", "INCLUDE_SEARCH_RESULTS", "Include web search results in prompt"),
-                ("Tool Metadata", "INCLUDE_TOOL_METADATA", "Include execution metadata"),
-                ("Chat History", "INCLUDE_CHAT_HISTORY", "Include recent conversation history"),
-                ("Memory Context", "INCLUDE_MEMORY_CONTEXT", "Include relevant memory context"),
-                ("Enhanced Memory", "INCLUDE_ENHANCED_MEMORY", "Include enhanced memory search"),
+                ("Base Memory", "INCLUDE_BASE_MEMORY", "Include BASE memory context"),
+                ("Short Memory", "INCLUDE_SHORT_MEMORY", "Include recent conversation history"),
+                ("Long Memory", "INCLUDE_LONG_MEMORY", "Include summary search"),
             ],
             "Minecraft Specific": [
                 ("Minecraft Context", "INCLUDE_MINECRAFT_CONTEXT", "Include Minecraft environment data"),
@@ -258,27 +255,13 @@ class ControlPanelManager:
                 ("Log Minecraft Execution", "LOG_MINECRAFT_EXECUTION", "Log Minecraft-specific operations"),
             ],
             "Memory Management": [
-                ("Save Memory", "SAVE_MEMORY", "Save conversations to memory system"),
+                ("Save Memory", "SAVE_MEMORY", "Save conversations to day-based memory system"),
             ]
         }
         
         # Create control sections
         for group_name, controls_list in control_groups.items():
             self.create_control_group(scrollable_frame, group_name, controls_list)
-        
-        # Add preset buttons
-        preset_frame = ttk.LabelFrame(scrollable_frame, text="Quick Presets", style="Dark.TLabelframe")
-        preset_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        preset_buttons_frame = ttk.Frame(preset_frame)
-        preset_buttons_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Button(preset_buttons_frame, text="Minimal", 
-                   command=lambda: self.load_preset("minimal"), width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(preset_buttons_frame, text="Standard", 
-                   command=lambda: self.load_preset("standard"), width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(preset_buttons_frame, text="Debug", 
-                   command=lambda: self.load_preset("debug"), width=12).pack(side=tk.LEFT, padx=2)
         
         # Add global control buttons
         global_frame = ttk.LabelFrame(scrollable_frame, text="Global Controls", style="Dark.TLabelframe")
@@ -293,6 +276,39 @@ class ControlPanelManager:
                    command=self.disable_all_controls, width=12).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame, text="Reset All", 
                    command=self.reset_controls, width=12).pack(side=tk.LEFT, padx=2)
+
+        # Updated memory management section to match day-based system
+        memory_frame = ttk.LabelFrame(scrollable_frame, text="Memory Management (Day-Based)", style="Dark.TLabelframe")
+        memory_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        memory_button_frame = ttk.Frame(memory_frame)
+        memory_button_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Button(memory_button_frame, text="Manual Summarize", 
+                   command=self.manual_summarize, width=15).pack(side=tk.LEFT, padx=2)
+        ttk.Button(memory_button_frame, text="Force Cleanup", 
+                   command=self.force_cleanup, width=15).pack(side=tk.LEFT, padx=2)
+        ttk.Button(memory_button_frame, text="Memory Debug", 
+                   command=self.show_memory_debug, width=15).pack(side=tk.LEFT, padx=2)
+
+        # Add Warudo connection status and control
+        warudo_frame = ttk.LabelFrame(scrollable_frame, text="Warudo Integration", style="Dark.TLabelframe")
+        warudo_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        warudo_controls = ttk.Frame(warudo_frame)
+        warudo_controls.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.warudo_status_label = tk.Label(
+            warudo_controls,
+            text="Status: Unknown",
+            font=("Arial", 9),
+            foreground=DarkTheme.FG_MUTED,
+            background=DarkTheme.BG_DARK
+        )
+        self.warudo_status_label.pack(side=tk.LEFT)
+        
+        ttk.Button(warudo_controls, text="Check Status", 
+                   command=self.check_warudo_status, width=12).pack(side=tk.RIGHT, padx=2)
 
     def create_control_group(self, parent, group_name, controls_list):
         """Create a control group with checkboxes"""
@@ -362,15 +378,6 @@ class ControlPanelManager:
         widget.bind("<Enter>", show_tooltip)
         widget.bind("<Leave>", hide_tooltip)
 
-    def load_preset(self, preset_name):
-        """Load a control preset"""
-        success = self.control_manager.load_preset(preset_name)
-        if success:
-            self.update_control_display()
-            self.log_system_message(f"Loaded preset: {preset_name}")
-        else:
-            self.log_system_message(f"Failed to load preset: {preset_name}")
-
     def enable_all_controls(self):
         """Enable all boolean controls"""
         for var_name in self.control_vars:
@@ -391,6 +398,125 @@ class ControlPanelManager:
         self.update_control_display()
         self.log_system_message("Controls reset to defaults")
 
+    def manual_summarize(self):
+        """Trigger manual memory summarization for past days"""
+        try:
+            success = self.ai_core.manual_summarize_past_days()
+            if success:
+                self.log_system_message("Manual summarization of past days completed successfully")
+            else:
+                self.log_system_message("Manual summarization completed but no new summaries were created")
+        except Exception as e:
+            self.log_system_message(f"Manual summarization failed: {e}")
+
+    def force_cleanup(self):
+        """Force memory cleanup - summarize all past day entries"""
+        try:
+            success = self.ai_core.force_memory_cleanup()
+            if success:
+                self.log_system_message("Force memory cleanup completed successfully - all past days summarized")
+            else:
+                self.log_system_message("Force memory cleanup completed but no summaries were created")
+        except Exception as e:
+            self.log_system_message(f"Force memory cleanup failed: {e}")
+
+    def show_memory_debug(self):
+        """Show memory debug information in a popup - updated for day-based system"""
+        try:
+            debug_info = self.ai_core.get_memory_debug_info()
+            
+            # Create debug window
+            debug_window = tk.Toplevel()
+            debug_window.title("Memory Debug Information - Day-Based System")
+            debug_window.configure(bg=DarkTheme.BG_DARK)
+            debug_window.geometry("700x600")
+            
+            # Create text widget with scrollbar
+            text_frame = ttk.Frame(debug_window)
+            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            text_widget = tk.Text(
+                text_frame,
+                wrap=tk.WORD,
+                font=("Consolas", 10),
+                bg=DarkTheme.BG_DARKER,
+                fg=DarkTheme.FG_PRIMARY,
+                insertbackground=DarkTheme.FG_PRIMARY
+            )
+            
+            scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+            text_widget.configure(yscrollcommand=scrollbar.set)
+            
+            text_widget.pack(side="left", fill=tk.BOTH, expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Format and insert debug info
+            debug_text = "MEMORY DEBUG INFORMATION - DAY-BASED SYSTEM\n"
+            debug_text += "=" * 50 + "\n\n"
+            
+            if 'error' in debug_info:
+                debug_text += f"ERROR: {debug_info['error']}\n"
+            else:
+                debug_text += f"Memory Statistics:\n"
+                for key, value in debug_info.get('memory_stats', {}).items():
+                    debug_text += f"  {key}: {value}\n"
+                
+                debug_text += f"\nDay-Based Memory Breakdown:\n"
+                debug_text += f"  Current day entries: {debug_info.get('current_day_entry_count', 'N/A')}\n"
+                debug_text += f"  Past day unsummarized entries: {debug_info.get('past_day_entry_count', 'N/A')}\n"
+                debug_text += f"  Summarization candidate days: {debug_info.get('summarization_candidate_days', [])}\n"
+                
+                debug_text += f"\nFile System Status:\n"
+                debug_text += f"  Memory file exists: {debug_info.get('memory_file_exists', 'N/A')}\n"
+                debug_text += f"  Embeddings file exists: {debug_info.get('embeddings_file_exists', 'N/A')}\n"
+                debug_text += f"  Base memory directory exists: {debug_info.get('base_memory_dir_exists', 'N/A')}\n"
+                
+                debug_text += f"\nInteraction Tracking:\n"
+                debug_text += f"  Total interactions: {debug_info.get('interaction_count', 'N/A')}\n"
+                debug_text += f"  Last summarization at interaction: {debug_info.get('last_summarization', 'N/A')}\n"
+                debug_text += f"  Interactions since last summary: {debug_info.get('interactions_since_last_summary', 'N/A')}\n"
+                debug_text += f"  Auto summary threshold: {debug_info.get('auto_summary_threshold', 'N/A')}\n"
+                
+                debug_text += f"\nMemory System Explanation:\n"
+                debug_text += f"- Current day entries: Stored in memory.json, used for short-term context\n"
+                debug_text += f"- Past day entries: Older entries awaiting summarization\n"
+                debug_text += f"- Daily summaries: Compressed summaries of past days stored as embeddings\n"
+                debug_text += f"- Base knowledge: Static knowledge base from text files\n"
+                debug_text += f"- Auto-summarization triggers every {debug_info.get('auto_summary_threshold', 'N/A')} interactions\n"
+            
+            text_widget.insert(tk.END, debug_text)
+            text_widget.config(state=tk.DISABLED)
+            
+        except Exception as e:
+            self.log_system_message(f"Failed to show memory debug info: {e}")
+
+    def check_warudo_status(self):
+        """Check Warudo connection status"""
+        try:
+            warudo_manager = getattr(self.ai_core, 'warudo_manager', None)
+            if warudo_manager:
+                connected = warudo_manager.controller.ws_connected if warudo_manager.controller else False
+                enabled = warudo_manager.enabled
+                
+                status_text = f"Connected: {'Yes' if connected else 'No'}, Enabled: {'Yes' if enabled else 'No'}"
+                status_color = DarkTheme.ACCENT_GREEN if connected and enabled else DarkTheme.ACCENT_RED
+                
+                self.warudo_status_label.config(
+                    text=f"Status: {status_text}",
+                    foreground=status_color
+                )
+                
+                self.log_system_message(f"Warudo status: {status_text}")
+            else:
+                self.warudo_status_label.config(
+                    text="Status: Not Available",
+                    foreground=DarkTheme.ACCENT_RED
+                )
+                self.log_system_message("Warudo manager not available")
+                
+        except Exception as e:
+            self.log_system_message(f"Error checking Warudo status: {e}")
+
     def toggle_control(self, var_name):
         """Toggle a control setting using the control manager"""
         new_value = self.ai_core.toggle_control_setting(var_name)
@@ -402,15 +528,18 @@ class ControlPanelManager:
                 text=f"({'ON' if new_value else 'OFF'})",
                 foreground=DarkTheme.ACCENT_GREEN if new_value else DarkTheme.FG_MUTED
             )
-            self.log_system_message(f"Control {var_name}: {'ON' if new_value else 'OFF'}")
             
             # Special handling for certain controls
             if var_name == "PLAYING_MINECRAFT" and new_value:
-                self.log_system_message("Minecraft mode enabled - bot will use environmental data")
+                self.log_system_message("Minecraft mode enabled - bot will use environmental data and integrated controls")
             elif var_name == "USE_VISION" and new_value:
                 self.log_system_message("Vision enabled - bot can analyze screenshots")
             elif var_name == "USE_SEARCH" and new_value:
                 self.log_system_message("Web search enabled - bot can search internet")
+            elif var_name == "USE_LONG_MEMORY" and new_value:
+                self.log_system_message("Long memory search enabled - bot will search daily summaries and base knowledge")
+            elif var_name == "SAVE_MEMORY" and new_value:
+                self.log_system_message("Memory saving enabled - conversations will be saved to day-based system")
         else:
             self.log_system_message(f"Failed to toggle control: {var_name}")
 

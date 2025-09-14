@@ -1,4 +1,4 @@
-# Filename: core/ai_core.py
+# Filename: core/ai_core.pytoggle_feature
 import os
 import sys
 import base64
@@ -18,21 +18,14 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from BASE.tools.query import web_search_summary
-from BASE.memory_methods.memory_manipulation import MemoryManager
+from BASE.memory_methods.memory_manager import MemoryManager
 from BASE.core.minecraft_integration import MinecraftIntegration
 from BASE.core.config import Config
 from BASE.core.control_methods import ControlManager
 
 from personality.SYS_MSG import *
-from personality.bot_info import botname, username, textmodel, visionmodel, embedmodel, \
-    systemTColor, toolTColor, errorTColor, resetTColor
+from personality.bot_info import *
 from personality import controls
-
-# Constants
-VISION_KEYWORDS = ["screen", "image", "see", "look", "monitor", "display", "show", "screenshot"]
-SEARCH_KEYWORDS = ["search", "find", "look up", "web", "internet", "google", "query", "browse"]
-MEMORY_KEYWORDS = ["remember", "recall", "memory", "past", "history", "previous", "before", "earlier"]
-MINECRAFT_KEYWORDS = ["go", "move", "collect", "gather", "mine", "build", "craft", "attack", "follow", "come"]
 
 # Regex for thinking tags, pre-compiled for efficiency
 THINK_PATTERN = re.compile(r'<think>(.*?)</think>', re.DOTALL)
@@ -60,13 +53,17 @@ class AICore:
         # External integrations (set by interface)
         self.warudo_manager = None
         
-        # FIXED: Create MinecraftIntegration instance without config dependencies
+        # Create MinecraftIntegration instance without config dependencies
         self.minecraft_integration = MinecraftIntegration()
         
         if self.controls.LOG_TOOL_EXECUTION:
             print(systemTColor + "[AI Core] Initialized successfully" + resetTColor)
-            print(systemTColor + f"[Controls] System: {self.controls.INCLUDE_SYSTEM_PROMPT}, Memory: {self.controls.INCLUDE_MEMORY_CONTEXT}, Vision: {self.controls.INCLUDE_VISION_RESULTS}, Search: {self.controls.INCLUDE_SEARCH_RESULTS}" + resetTColor)
-            print(systemTColor + f"[Controls] Minecraft: {self.controls.PLAYING_MINECRAFT}, Group Chat: {self.controls.IN_GROUP_CHAT}" + resetTColor)
+            print(systemTColor + f"[Controls] System: {self.controls.INCLUDE_SYSTEM_PROMPT}, Base Memory: {self.controls.INCLUDE_BASE_MEMORY}, Short Memory: {self.controls.INCLUDE_SHORT_MEMORY}, Long Memory: {self.controls.INCLUDE_LONG_MEMORY}, Vision: {self.controls.INCLUDE_VISION_RESULTS}, Search: {self.controls.INCLUDE_SEARCH_RESULTS}" + resetTColor)
+            print(systemTColor + f"[Controls] Minecraft: {self.controls.PLAYING_MINECRAFT}, Avatar Animations: {self.controls.AVATAR_ANIMATIONS}" + resetTColor)
+            
+            # Show memory system status
+            memory_stats = self.memory_manager.get_memory_stats()
+            print(systemTColor + f"[Memory] Current day entries: {memory_stats['current_day_entries']}, Past day entries: {memory_stats['past_day_unsummarized_entries']}, Daily summaries: {memory_stats['daily_summary_embeddings_count']}, Base knowledge: {memory_stats['base_embeddings_count']}" + resetTColor)
 
     def set_warudo_manager(self, warudo_manager):
         """Set the Warudo manager for animations"""
@@ -103,47 +100,6 @@ class AICore:
         if new_value is not None and self.controls.LOG_TOOL_EXECUTION:
             print(systemTColor + f"[Controls] Toggled {setting_name}: {new_value}" + resetTColor)
         return new_value
-    
-    def load_control_preset(self, preset_name):
-        """Load a control preset configuration"""
-        success = self.control_manager.load_preset(preset_name)
-        if success and self.controls.LOG_TOOL_EXECUTION:
-            print(systemTColor + f"[Controls] Loaded preset: {preset_name}" + resetTColor)
-            print(systemTColor + self.control_manager.get_status_summary() + resetTColor)
-        return success
-
-    def debug_animation_system(self, reply=""):
-        """Debug the animation system to identify issues"""
-        print(systemTColor + "[DEBUG ANIMATION SYSTEM]" + resetTColor)
-        print(f"  - Warudo Manager exists: {self.warudo_manager is not None}")
-        print(f"  - controls.AVATAR_ANIMATIONS: {self.controls.AVATAR_ANIMATIONS}")
-        print(f"  - global controls.AVATAR_ANIMATIONS: {controls.AVATAR_ANIMATIONS}")
-        
-        if self.warudo_manager:
-            print(f"  - WebSocket connected: {self.warudo_manager.controller.ws_connected}")
-            print(f"  - WebSocket URL: {self.warudo_manager.controller.websocket_url}")
-            print(f"  - Animation enabled: {self.warudo_manager.enabled}")
-            print(f"  - Available emotions: {len(self.warudo_manager.controller.available_emotions)}")
-            print(f"  - Available animations: {len(self.warudo_manager.controller.available_animations)}")
-            
-            # Test connection if not connected
-            if not self.warudo_manager.controller.ws_connected:
-                print("[DEBUG] WebSocket not connected, attempting reconnect...")
-                success = self.warudo_manager.connect()
-                print(f"[DEBUG] Reconnection {'successful' if success else 'failed'}")
-            
-            # Test keyword detection
-            if reply:
-                print(f"  - Testing reply: '{reply[:100]}...'")
-                reply_lower = reply.lower()
-                detected_keywords = []
-                for keyword, command in self.warudo_manager.animation_keywords.items():
-                    if keyword in reply_lower:
-                        detected_keywords.append((keyword, command))
-                print(f"  - Detected keywords: {detected_keywords}")
-        else:
-            print("  - Warudo Manager is None!")
-        print(systemTColor + "[END DEBUG]" + resetTColor)
 
     def _call_ollama(self, prompt: str, model: str, system_prompt: Optional[str] = None, image_data: str = "") -> str:
         """Call Ollama API with proper vision support and optimized parameters"""
@@ -251,7 +207,7 @@ class AICore:
         if not self.control_manager.validate_all_configs():
             print(systemTColor + "[Warning] Configuration validation failed, continuing anyway..." + resetTColor)
 
-        tool_context, interaction_metadata = await self._execute_tools(user_text)
+        tool_context = await self._execute_tools(user_text)
 
         system_prompt = None
         if self.controls.INCLUDE_SYSTEM_PROMPT:
@@ -261,22 +217,22 @@ class AICore:
         if tool_context.strip():
             prompt_parts.append(tool_context)
 
-        if self.controls.INCLUDE_CHAT_HISTORY and self.controls.IN_GROUP_CHAT and self.history:
-            recent_history = self.history[-self.controls.MEMORY_LENGTH:]
+        if self.controls.INCLUDE_SHORT_MEMORY and self.history:
+            recent_history = self.history
             history_section = "\n[RECENT_CHAT_HISTORY]\n"
             for entry in recent_history:
                 role = entry['role'].upper()
-                content = entry['content'][:200] + "..." if len(entry['content']) > 200 else entry['content']
+                content = entry['content']
                 history_section += f"{role}: {content}\n"
             prompt_parts.append(history_section)
 
-        # FIXED: Simplified Minecraft context handling using the integration
+        # Simplified Minecraft context handling
         if self.controls.PLAYING_MINECRAFT and self.controls.INCLUDE_MINECRAFT_CONTEXT:
             minecraft_context = await self.minecraft_integration.handle_vision(user_text, True)
             if minecraft_context:
                 prompt_parts.append(minecraft_context)
 
-        user_input_label = "[USER_INPUT]" if self.controls.IN_GROUP_CHAT else "[USER]"
+        user_input_label = "[USER]"
         prompt_parts.append(f"{user_input_label}\n{user_text}")
 
         if self.controls.PLAYING_MINECRAFT and self.minecraft_integration:
@@ -302,7 +258,7 @@ class AICore:
             print(errorTColor + "[ERROR] Received empty response from model" + resetTColor)
             return None
 
-        # ENHANCED: Handle animations with comprehensive debugging
+        # Handle animations with comprehensive debugging
         print(systemTColor + f"[ANIMATION CHECK] Starting animation processing..." + resetTColor)
         print(f"[ANIMATION CHECK] controls.AVATAR_ANIMATIONS = {self.controls.AVATAR_ANIMATIONS}")
         print(f"[ANIMATION CHECK] self.warudo_manager exists = {self.warudo_manager is not None}")
@@ -311,9 +267,6 @@ class AICore:
             print(systemTColor + f"[ANIMATION] Conditions met, processing reply: '{reply[:50]}...'" + resetTColor)
             print(f"[ANIMATION] WebSocket connected: {self.warudo_manager.controller.ws_connected}")
             print(f"[ANIMATION] Warudo enabled: {self.warudo_manager.enabled}")
-            
-            # Debug the animation system with current reply
-            self.debug_animation_system(reply)
             
             try:
                 print(systemTColor + "[ANIMATION] Calling detect_and_send_animations..." + resetTColor)
@@ -331,7 +284,7 @@ class AICore:
                 reasons.append("warudo_manager is None")
             print(systemTColor + f"[ANIMATION] Skipped - Reasons: {', '.join(reasons)}" + resetTColor)
 
-        # FIXED: Minecraft command handling - use the integration properly
+        # Minecraft command handling - use the integration properly
         if self.controls.PLAYING_MINECRAFT and self.controls.SEND_MINECRAFT_COMMAND:
             if self.controls.LOG_MINECRAFT_EXECUTION:
                 print(systemTColor + "[Minecraft] Sending AI response for command processing" + resetTColor)
@@ -343,7 +296,7 @@ class AICore:
                     import traceback
                     traceback.print_exc()
 
-        # FIXED: Minecraft chat handling - use the integration properly  
+        # Minecraft chat handling 
         if self.controls.PLAYING_MINECRAFT and self.controls.SEND_MINECRAFT_MESSAGE and not self.controls.SEND_MINECRAFT_COMMAND:
             try:
                 await self.minecraft_integration.send_minecraft_chat(reply)
@@ -355,24 +308,26 @@ class AICore:
                     import traceback
                     traceback.print_exc()
 
-        # Memory saving (keep existing logic)
+        # Memory saving with day-based logic
         if self.controls.SAVE_MEMORY:
             context_to_save = user_text
             if self.controls.PLAYING_MINECRAFT and self.minecraft_integration:
                 context_to_save = await self.minecraft_integration.enhance_memory_context(user_text, context_to_save)
             
+            # Save interaction - this goes to memory.json as current day entries
             self.memory_manager.save_interaction(context_to_save, reply)
             self.interaction_count += 1
             
+            # Check for auto-summarization of past days
             self._check_auto_summarize()
 
-            if self.controls.IN_GROUP_CHAT:
-                self.history.extend([
-                    {"role": "user", "content": user_text},
-                    {"role": "assistant", "content": reply},
-                ])
-                if len(self.history) > (self.controls.MEMORY_LENGTH * 2):
-                    self.history = self.history[-(self.controls.MEMORY_LENGTH * 2):]
+            # if self.controls.IN_GROUP_CHAT:
+            #     self.history.extend([
+            #         {"role": "user", "content": user_text},
+            #         {"role": "assistant", "content": reply},
+            #     ])
+            #     if len(self.history) > (self.controls.MEMORY_LENGTH * 2):
+            #         self.history = self.history[-(self.controls.MEMORY_LENGTH * 2):]
 
         return reply.strip()
 
@@ -385,47 +340,43 @@ class AICore:
         return base64.b64encode(buf.getvalue()).decode()
 
     def _get_memory_context(self, query: str) -> str:
-        """Get enhanced memory context based on query"""
+        """Get enhanced memory context based on control variables using day-based system"""
         include_base = self.config.include_base_memory
         
-        memory_context = self.memory_manager.get_memory_context(query, include_base=include_base)
-        
-        # Enhanced memory search for specific queries
-        if any(keyword in query.lower() for keyword in MEMORY_KEYWORDS) and self.controls.INCLUDE_ENHANCED_MEMORY:
-            if "RELEVANT KNOWLEDGE" not in memory_context:
-                if include_base:
-                    base_results = self.memory_manager.search_base_memory_only(query, k=self.config.base_memory_search_results)
-                    if base_results:
-                        memory_context += "\n=== ADDITIONAL BASE KNOWLEDGE ===\n"
-                        for result in base_results:
-                            source_file = result['metadata'].get('source_file', 'unknown')
-                            memory_context += f"- {result['text']} [From: {source_file}] (relevance: {result['relevance_score']:.2f})\n"
+        # Use control variables to determine memory search behavior
+        if self.controls.USE_LONG_MEMORY:
+            # Force long-term memory search when USE_LONG_MEMORY is enabled
+            # This will search both daily summaries and base knowledge
+            memory_context = self.memory_manager.get_memory_context(query, include_base=include_base, force_long_term=True)
+            
+            # Enhanced memory search for additional base knowledge when enabled
+            if self.controls.INCLUDE_ENHANCED_MEMORY and include_base:
+                # Always do enhanced search when the control is enabled, regardless of query content
+                base_results = self.memory_manager.search_base_memory_only(query, k=self.config.base_memory_search_results)
+                if base_results:
+                    memory_context += "\n=== ADDITIONAL BASE KNOWLEDGE ===\n"
+                    for result in base_results:
+                        source_file = result['metadata'].get('source_file', 'unknown')
+                        memory_context += f"- {result['text']} [From: {source_file}] (similarity: {result['similarity']:.2f})\n"
+        else:
+            # When USE_LONG_MEMORY is disabled, only get current day context
+            memory_context = self.memory_manager.get_short_term_context_only()
         
         return memory_context
 
-    async def _execute_tools(self, user_text: str) -> tuple[str, dict]:
+    async def _execute_tools(self, user_text: str) -> str:
         tool_context_parts = []
         interaction_metadata = {
             "used_vision": False,
             "used_search": False,
             "used_memory": False,
             "used_minecraft": False,
-            "memory_type": "short-term",
+            "memory_type": "current-day-only",
             "tool_context_length": 0,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-
-        needs_vision = any(keyword in user_text.lower() for keyword in VISION_KEYWORDS)
-        needs_search = any(keyword in user_text.lower() for keyword in SEARCH_KEYWORDS)
-        needs_memory = any(keyword in user_text.lower() for keyword in MEMORY_KEYWORDS)
         
-        auto_vision_terms = ['what do you see', 'screen', 'desktop', 'window', 'around me']
-        auto_search_terms = ['latest', 'current', 'recent news', 'today', 'now']
-        
-        auto_needs_vision = any(term in user_text.lower() for term in auto_vision_terms) and not needs_vision
-        auto_needs_search = any(term in user_text.lower() for term in auto_search_terms) and not needs_search
-
-        # FIXED: Simplified Minecraft tool execution
+        # Simplified Minecraft tool execution
         if self.controls.PLAYING_MINECRAFT:
             try:
                 if self.controls.LOG_TOOL_EXECUTION:
@@ -443,7 +394,8 @@ class AICore:
             except Exception as e:
                 print(errorTColor + f"[Minecraft] Error getting context: {e}" + resetTColor)
 
-        if self.controls.USE_VISION and (needs_vision or auto_needs_vision) and not self.controls.PLAYING_MINECRAFT:
+        # Vision tool - controlled by USE_VISION flag only
+        if self.controls.USE_VISION and not self.controls.PLAYING_MINECRAFT:
             try:
                 if self.controls.LOG_TOOL_EXECUTION:
                     print(systemTColor + "[Tool] Vision analysis requested - capturing screenshot..." + resetTColor)
@@ -462,7 +414,8 @@ class AICore:
             except Exception as e:
                 print(errorTColor + f"[Vision] Error: {e}" + resetTColor)
         
-        if (needs_search or auto_needs_search) and self.controls.USE_SEARCH:
+        # Search tool - controlled by USE_SEARCH flag
+        if self.controls.USE_SEARCH:
             try:
                 if self.controls.LOG_TOOL_EXECUTION:
                     print(systemTColor + "[Tool] Web search requested..." + resetTColor)
@@ -475,46 +428,106 @@ class AICore:
             except Exception as e:
                 print(errorTColor + f"[Search] Error: {e}" + resetTColor)
         
-        if self.controls.INCLUDE_MEMORY_CONTEXT:
+        # Memory context
+        if self.controls.INCLUDE_SHORT_MEMORY or self.controls.INCLUDE_LONG_MEMORY:
             memory_context = self._get_memory_context(user_text)
             if memory_context.strip():
                 tool_context_parts.append(f"\n[MEMORY_CONTEXT]\n{memory_context}")
                 interaction_metadata["used_memory"] = True
                 
-                if "RELEVANT KNOWLEDGE" in memory_context or "ADDITIONAL BASE KNOWLEDGE" in memory_context:
-                    interaction_metadata["memory_type"] = "long-term"
+                # Determine memory type based on control settings and content
+                if self.controls.USE_LONG_MEMORY:
+                    if "RELEVANT KNOWLEDGE" in memory_context:
+                        if "Past Days' Summaries:" in memory_context and "Knowledge Base:" in memory_context:
+                            interaction_metadata["memory_type"] = "daily-summaries+base-knowledge"
+                        elif "Past Days' Summaries:" in memory_context:
+                            interaction_metadata["memory_type"] = "daily-summaries"
+                        elif "Knowledge Base:" in memory_context:
+                            interaction_metadata["memory_type"] = "base-knowledge"
+                    else:
+                        interaction_metadata["memory_type"] = "current-day+long-term-search"
+                else:
+                    interaction_metadata["memory_type"] = "current-day-only"
 
-        if self.controls.INCLUDE_TOOL_METADATA:
-            metadata_section = "\n[TOOL_EXECUTION_METADATA]\n"
-            metadata_section += f"Vision: {'Used' if interaction_metadata['used_vision'] else 'Not used'}, "
-            metadata_section += f"Search: {'Used' if interaction_metadata['used_search'] else 'Not used'}, "
-            metadata_section += f"Memory: {interaction_metadata['memory_type']}, "
-            metadata_section += f"Minecraft: {'Used' if interaction_metadata['used_minecraft'] else 'Not used'}\n"
-            tool_context_parts.append(metadata_section)
+        # if self.controls.INCLUDE_TOOL_METADATA:
+        #     metadata_section = "\n[TOOL_EXECUTION_METADATA]\n"
+        #     metadata_section += f"Vision: {'Used' if interaction_metadata['used_vision'] else 'Not used'}, "
+        #     metadata_section += f"Search: {'Used' if interaction_metadata['used_search'] else 'Not used'}, "
+        #     metadata_section += f"Memory: {interaction_metadata['memory_type']}, "
+        #     metadata_section += f"Minecraft: {'Used' if interaction_metadata['used_minecraft'] else 'Not used'}\n"
+        #     tool_context_parts.append(metadata_section)
         
         combined_tool_context = "".join(tool_context_parts)
         interaction_metadata["tool_context_length"] = len(combined_tool_context)
         
-        return combined_tool_context, interaction_metadata
+        return combined_tool_context
 
     def _check_auto_summarize(self):
+        """Check and trigger automatic summarization of past day entries"""
         if (self.interaction_count - self.last_summarization) >= self.config.auto_summarize_threshold:
             if self.controls.LOG_TOOL_EXECUTION:
-                print(systemTColor + f"[Memory] Auto-summarizing after {self.config.auto_summarize_threshold} interactions..." + resetTColor)
+                print(systemTColor + f"[Memory] Auto-summarizing past days after {self.config.auto_summarize_threshold} interactions..." + resetTColor)
+            
+            # Check if there are any past day entries to summarize
+            past_day_entries = self.memory_manager.get_past_day_entries_for_summarization()
+            if len(past_day_entries) < 4:  # Need minimum entries for meaningful summary
+                if self.controls.LOG_TOOL_EXECUTION:
+                    print(systemTColor + f"[Memory] Only {len(past_day_entries)} past day entries - skipping auto-summarization" + resetTColor)
+                return
             
             try:
                 from BASE.memory_methods.summarizer import summarize_memory
-                summarize_memory(self.memory_manager)
-                self.last_summarization = self.interaction_count
+                success = summarize_memory(self.memory_manager)
+                if success:
+                    self.last_summarization = self.interaction_count
+                    if self.controls.LOG_TOOL_EXECUTION:
+                        # Show updated memory stats after summarization
+                        memory_stats = self.memory_manager.get_memory_stats()
+                        print(systemTColor + f"[Memory] After summarization - Current day: {memory_stats['current_day_entries']}, Daily summaries: {memory_stats['daily_summary_embeddings_count']}" + resetTColor)
+                else:
+                    if self.controls.LOG_TOOL_EXECUTION:
+                        print(systemTColor + "[Memory] Auto-summarization completed but no summaries were created" + resetTColor)
             except ImportError:
                 print(errorTColor + "[Error] Summarizer module not found" + resetTColor)
             except Exception as e:
                 print(errorTColor + f"[Error] Summarization failed: {e}" + resetTColor)
 
+    def manual_summarize_past_days(self):
+        """Manually trigger summarization of past day entries"""
+        if self.controls.LOG_TOOL_EXECUTION:
+            print(systemTColor + "[Memory] Manual summarization of past days requested..." + resetTColor)
+        
+        try:
+            from BASE.memory_methods.summarizer import summarize_memory, get_days_available_for_summarization
+            
+            # Show what days are available for summarization
+            available_days = get_days_available_for_summarization(self.memory_manager)
+            if available_days:
+                print(systemTColor + f"[Memory] Days available for summarization: {', '.join(available_days)}" + resetTColor)
+                
+                success = summarize_memory(self.memory_manager)
+                if success:
+                    print(systemTColor + "[Memory] Manual summarization completed successfully" + resetTColor)
+                    # Show updated stats
+                    memory_stats = self.memory_manager.get_memory_stats()
+                    print(systemTColor + f"[Memory] Updated stats - Current day: {memory_stats['current_day_entries']}, Daily summaries: {memory_stats['daily_summary_embeddings_count']}" + resetTColor)
+                    return True
+                else:
+                    print(systemTColor + "[Memory] Manual summarization completed but no summaries were created" + resetTColor)
+                    return False
+            else:
+                print(systemTColor + "[Memory] No past day entries available for summarization" + resetTColor)
+                return False
+                
+        except ImportError:
+            print(errorTColor + "[Error] Summarizer module not found" + resetTColor)
+            return False
+        except Exception as e:
+            print(errorTColor + f"[Error] Manual summarization failed: {e}" + resetTColor)
+            return False
+
     def _get_system_prompt(self) -> str:
-        if self.controls.IN_GROUP_CHAT:
-            return f"{self.config.system_prompt}"
-        elif self.controls.PLAYING_MINECRAFT:
+        if self.controls.PLAYING_MINECRAFT:
             return f"{minecraft_system_prompt}\n{minecraft_system_addendum}"
         else:
             return self.config.system_prompt
@@ -524,20 +537,29 @@ class AICore:
         bot_info = {
             'name': self.config.botname,
             'username': username,
-            'memory_entries': memory_stats['memory_entries'],
-            'summary_embeddings_count': memory_stats['summary_embeddings_count'],
+            'current_day_entries': memory_stats['current_day_entries'],
+            'past_day_unsummarized_entries': memory_stats['past_day_unsummarized_entries'],
+            'total_memory_entries': memory_stats['total_memory_entries'],
+            'daily_summary_embeddings_count': memory_stats['daily_summary_embeddings_count'],
             'base_embeddings_count': memory_stats['base_embeddings_count'],
             'interaction_count': self.interaction_count,
             'minecraft_ready': bool(self.minecraft_integration),
             'control_status': self.control_manager.get_all_features(),
             'current_settings': {
                 'playing_minecraft': self.controls.PLAYING_MINECRAFT,
-                'in_group_chat': self.controls.IN_GROUP_CHAT,
+                # 'in_group_chat': self.controls.IN_GROUP_CHAT,
                 'use_vision': self.controls.USE_VISION,
                 'use_search': self.controls.USE_SEARCH,
                 'avatar_animations': self.controls.AVATAR_ANIMATIONS
             }
         }
+        
+        # Get summarization candidate days
+        try:
+            candidate_days = self.memory_manager.get_summarization_candidate_days()
+            bot_info['summarization_candidate_days'] = candidate_days
+        except Exception as e:
+            bot_info['summarization_candidate_days'] = []
         
         if self.minecraft_integration:
             try:
@@ -550,3 +572,49 @@ class AICore:
                 bot_info['minecraft_status'] = {'error': str(e)}
         
         return bot_info
+
+    def get_memory_debug_info(self):
+        """Get detailed memory system debug information"""
+        try:
+            memory_stats = self.memory_manager.get_memory_stats()
+            current_day_entries = self.memory_manager.get_current_day_entries()
+            past_day_entries = self.memory_manager.get_past_day_entries_for_summarization()
+            candidate_days = self.memory_manager.get_summarization_candidate_days()
+            
+            debug_info = {
+                'memory_stats': memory_stats,
+                'current_day_entry_count': len(current_day_entries),
+                'past_day_entry_count': len(past_day_entries),
+                'summarization_candidate_days': candidate_days,
+                'memory_file_exists': self.memory_manager.memory_file.exists(),
+                'embeddings_file_exists': self.memory_manager.embeddings_file.exists(),
+                'base_memory_dir_exists': self.memory_manager.base_memory_dir.exists(),
+                'interaction_count': self.interaction_count,
+                'last_summarization': self.last_summarization,
+                'interactions_since_last_summary': self.interaction_count - self.last_summarization,
+                'auto_summary_threshold': self.config.auto_summarize_threshold
+            }
+            
+            return debug_info
+        except Exception as e:
+            return {'error': str(e)}
+
+    def force_memory_cleanup(self):
+        """Force cleanup of memory system - summarize all past day entries"""
+        try:
+            print(systemTColor + "[Memory] Forcing memory cleanup - summarizing all past day entries..." + resetTColor)
+            
+            from BASE.memory_methods.summarizer import summarize_memory
+            success = summarize_memory(self.memory_manager)
+            
+            if success:
+                self.last_summarization = self.interaction_count
+                print(systemTColor + "[Memory] Forced memory cleanup completed successfully" + resetTColor)
+                return True
+            else:
+                print(systemTColor + "[Memory] Forced memory cleanup completed but no summaries were created" + resetTColor)
+                return False
+                
+        except Exception as e:
+            print(errorTColor + f"[Error] Forced memory cleanup failed: {e}" + resetTColor)
+            return False

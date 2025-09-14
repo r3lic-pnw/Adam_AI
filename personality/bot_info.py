@@ -7,7 +7,7 @@ textmodel = "gemma3:1b-it-q4_K_M"
 visionmodel="llava:7b-v1.5-q4_K_M"
 embedmodel = "nomic-embed-text:latest"
 
-voiceIndex = 0
+voiceIndex = 1
 
 # GUI Colors
 botColor = "#001aff"

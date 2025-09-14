@@ -56,216 +56,116 @@ class ControlManager:
                     features[name] = value
         return features
 
-    def reset_to_defaults(self):
-        """Reset all features to their default safe values"""
-        defaults = {
-            # Core capabilities - conservative defaults
-            'USE_SEARCH': False,
-            'USE_VISION': False,
-            'USE_MEMORY_SEARCH': False,
-            
-            # Game integration - off by default
-            'PLAYING_GAME': False,
-            'PLAYING_MINECRAFT': False,
-            'IN_GROUP_CHAT': False,
-            
-            # Prompt components - sensible defaults
-            'INCLUDE_SYSTEM_PROMPT': True,
-            'INCLUDE_MEMORY_CONTEXT': True,
-            'INCLUDE_VISION_RESULTS': True,
-            'INCLUDE_SEARCH_RESULTS': True,
-            'INCLUDE_TOOL_METADATA': False,
-            'INCLUDE_ENHANCED_MEMORY': False,
-            'INCLUDE_CHAT_HISTORY': True,
-            
-            # Minecraft - off by default
-            'INCLUDE_MINECRAFT_CONTEXT': False,
-            'SEND_MINECRAFT_MESSAGE': False,
-            'SEND_MINECRAFT_COMMAND': False,
-            
-            # Memory - on by default
-            'SAVE_MEMORY': True,
-            'MEMORY_LENGTH': 6,
-            'PROMPT_TIMEOUT': 600,
-            
-            # Output actions - off by default for safety
-            'AVATAR_ANIMATIONS': False,
-            'AVATAR_SPEECH': False,
-            
-            # Logging - off by default for performance
-            'LOG_TOOL_EXECUTION': False,
-            'LOG_PROMPT_CONSTRUCTION': False,
-            'LOG_RESPONSE_PROCESSING': False,
-            'LOG_MINECRAFT_EXECUTION': False,
-        }
-        
-        for feature, value in defaults.items():
-            if hasattr(self.controls, feature):
-                setattr(self.controls, feature, value)
-
-    def load_preset(self, preset_name):
-        """Load a preset configuration"""
-        presets = {
-            'minimal': {
-                'USE_SEARCH': False,
-                'USE_VISION': False,
-                'USE_MEMORY_SEARCH': False,
-                'SAVE_MEMORY': False,
-                'INCLUDE_MEMORY_CONTEXT': False,
-                'AVATAR_ANIMATIONS': False,
-                'AVATAR_SPEECH': False,
-                'LOG_TOOL_EXECUTION': False,
-            },
-            'standard': {
-                'USE_SEARCH': True,
-                'USE_VISION': True,
-                'USE_MEMORY_SEARCH': True,
-                'SAVE_MEMORY': True,
-                'INCLUDE_MEMORY_CONTEXT': True,
-                'AVATAR_ANIMATIONS': False,
-                'AVATAR_SPEECH': False,
-                'LOG_TOOL_EXECUTION': False,
-            },
-            'full_features': {
-                'USE_SEARCH': True,
-                'USE_VISION': True,
-                'USE_MEMORY_SEARCH': True,
-                'SAVE_MEMORY': True,
-                'INCLUDE_MEMORY_CONTEXT': True,
-                'INCLUDE_ENHANCED_MEMORY': True,
-                'AVATAR_ANIMATIONS': True,
-                'AVATAR_SPEECH': True,
-                'LOG_TOOL_EXECUTION': True,
-            },
-            'minecraft': {
-                'PLAYING_MINECRAFT': True,
-                'USE_VISION': True,
-                'INCLUDE_MINECRAFT_CONTEXT': True,
-                'SEND_MINECRAFT_MESSAGE': True,
-                'SAVE_MEMORY': True,
-                'LOG_MINECRAFT_EXECUTION': True,
-            },
-            'group_chat': {
-                'IN_GROUP_CHAT': True,
-                'INCLUDE_CHAT_HISTORY': True,
-                'USE_SEARCH': True,
-                'SAVE_MEMORY': True,
-                'AVATAR_ANIMATIONS': False,
-            },
-            'debug': {
-                'LOG_TOOL_EXECUTION': True,
-                'LOG_PROMPT_CONSTRUCTION': True,
-                'LOG_RESPONSE_PROCESSING': True,
-                'LOG_MINECRAFT_EXECUTION': True,
-                'INCLUDE_TOOL_METADATA': True,
-            }
-        }
-        
-        if preset_name in presets:
-            for feature, value in presets[preset_name].items():
-                if hasattr(self.controls, feature):
-                    setattr(self.controls, feature, value)
-            return True
-        return False
-
     def get_status_summary(self):
-        """Get a human-readable summary of current settings"""
+        """Get a human-readable summary of current settings using actual control values"""
         summary = []
         if not self.controls:
             summary.append("Controls module not available.")
             return "\n".join(summary)
+            
         summary.append("=== AI CAPABILITIES ===")
-        summary.append(f"Search: {'ON' if getattr(self.controls, 'USE_SEARCH', False) else 'OFF'}")
-        summary.append(f"Vision: {'ON' if getattr(self.controls, 'USE_VISION', False) else 'OFF'}")
-        summary.append(f"Memory Search: {'ON' if getattr(self.controls, 'USE_MEMORY_SEARCH', False) else 'OFF'}")
+        summary.append(f"Search: {'ON' if self.controls.USE_SEARCH else 'OFF'}")
+        summary.append(f"Vision: {'ON' if self.controls.USE_VISION else 'OFF'}")
+        summary.append(f"Memory Search: {'ON' if self.controls.USE_LONG_MEMORY else 'OFF'}")
+        summary.append(f"Base Memory: {'ON' if self.controls.USE_BASE_MEMORY else 'OFF'}")
+        summary.append(f"Short Memory: {'ON' if self.controls.USE_SHORT_MEMORY else 'OFF'}")
+        summary.append(f"Long Memory: {'ON' if self.controls.USE_LONG_MEMORY else 'OFF'}")
         
-        summary.append("\n=== MODES ===")
-        summary.append(f"Minecraft: {'ON' if getattr(self.controls, 'PLAYING_MINECRAFT', False) else 'OFF'}")
-        summary.append(f"Group Chat: {'ON' if getattr(self.controls, 'IN_GROUP_CHAT', False) else 'OFF'}")
+        summary.append("\n=== PROMPT INCLUDES ===")
+        summary.append(f"System Prompt: {'ON' if self.controls.INCLUDE_SYSTEM_PROMPT else 'OFF'}")
+        summary.append(f"Vision Results: {'ON' if self.controls.INCLUDE_VISION_RESULTS else 'OFF'}")
+        summary.append(f"Search Results: {'ON' if self.controls.INCLUDE_SEARCH_RESULTS else 'OFF'}")
+        summary.append(f"Base Memory: {'ON' if self.controls.INCLUDE_BASE_MEMORY else 'OFF'}")
+        summary.append(f"Short Memory: {'ON' if self.controls.INCLUDE_SHORT_MEMORY else 'OFF'}")
+        summary.append(f"Long Memory: {'ON' if self.controls.INCLUDE_LONG_MEMORY else 'OFF'}")
+        summary.append(f"Chat History: {'ON' if self.controls.INCLUDE_SHORT_MEMORY else 'OFF'}")
         
         summary.append("\n=== OUTPUT ===")
-        summary.append(f"Animations: {'ON' if getattr(self.controls, 'AVATAR_ANIMATIONS', False) else 'OFF'}")
-        summary.append(f"Speech: {'ON' if getattr(self.controls, 'AVATAR_SPEECH', False) else 'OFF'}")
-        summary.append(f"Save Memory: {'ON' if getattr(self.controls, 'SAVE_MEMORY', False) else 'OFF'}")
+        summary.append(f"Animations: {'ON' if self.controls.AVATAR_ANIMATIONS else 'OFF'}")
+        summary.append(f"Speech: {'ON' if self.controls.AVATAR_SPEECH else 'OFF'}")
+        summary.append(f"Save Memory: {'ON' if self.controls.SAVE_MEMORY else 'OFF'}")
+
+        summary.append("\n=== MODES ===")
+        summary.append(f"Minecraft: {'ON' if self.controls.PLAYING_MINECRAFT else 'OFF'}")
         
         summary.append("\n=== DEBUGGING ===")
-        summary.append(f"Tool Logs: {'ON' if getattr(self.controls, 'LOG_TOOL_EXECUTION', False) else 'OFF'}")
-        summary.append(f"Prompt Logs: {'ON' if getattr(self.controls, 'LOG_PROMPT_CONSTRUCTION', False) else 'OFF'}")
-        summary.append(f"Response Logs: {'ON' if getattr(self.controls, 'LOG_RESPONSE_PROCESSING', False) else 'OFF'}")
+        summary.append(f"Prompt Logs: {'ON' if self.controls.LOG_PROMPT_CONSTRUCTION else 'OFF'}")
+        summary.append(f"Response Logs: {'ON' if self.controls.LOG_RESPONSE_PROCESSING else 'OFF'}")
+        summary.append(f"Minecraft Logs: {'ON' if self.controls.LOG_MINECRAFT_EXECUTION else 'OFF'}")
         
         return "\n".join(summary)
 
-    def get_available_presets(self):
-        """Get list of available presets"""
-        return ['minimal', 'standard', 'full_features', 'minecraft', 'group_chat', 'debug']
-
     def validate_minecraft_config(self):
-        """Check if Minecraft configuration is valid"""
+        """Check if Minecraft configuration is valid using actual control values"""
         if not self.controls:
             print("Warning: Controls module not available.")
             return False
-        if getattr(self.controls, 'PLAYING_MINECRAFT', False):
-            required_features = ['INCLUDE_MINECRAFT_CONTEXT']
-            missing = [f for f in required_features if not getattr(self.controls, f, False)]
-            if missing:
-                print(f"Warning: Minecraft mode enabled but missing: {missing}")
-                return False
+            
+        if self.controls.PLAYING_MINECRAFT:
+            # Check required dependencies for Minecraft mode
+            if not self.controls.INCLUDE_SYSTEM_PROMPT:
+                print("Warning: Minecraft mode enabled but system prompt disabled")
+                
+            if self.controls.SEND_MINECRAFT_COMMAND or self.controls.SEND_MINECRAFT_MESSAGE:
+                if not self.controls.INCLUDE_MINECRAFT_CONTEXT:
+                    print("Warning: Minecraft commands/messages enabled but context disabled")
+                    return False
         return True
 
     def validate_memory_config(self):
-        """Check if memory configuration is valid"""
+        """Check if memory configuration is valid using actual control values"""
         if not self.controls:
             print("Warning: Controls module not available.")
             return False
-        if getattr(self.controls, 'SAVE_MEMORY', False) and not getattr(self.controls, 'INCLUDE_MEMORY_CONTEXT', False):
-            print("Warning: Saving memory but not including memory context in prompts")
+            
+        return True
+
+    def validate_tool_config(self):
+        """Check if tool configuration is valid using actual control values"""
+        if not self.controls:
+            print("Warning: Controls module not available.")
             return False
+            
+        if self.controls.USE_VISION and not self.controls.INCLUDE_VISION_RESULTS:
+            print("Warning: Vision enabled but results not included in prompts")
+            
+        if self.controls.USE_SEARCH and not self.controls.INCLUDE_SEARCH_RESULTS:
+            print("Warning: Search enabled but results not included in prompts")
+            
         return True
 
     def validate_all_configs(self):
-        """Validate all configurations"""
-        return self.validate_minecraft_config() and self.validate_memory_config()
+        """Validate all configurations using actual control values"""
+        return (self.validate_minecraft_config() and 
+                self.validate_memory_config() and 
+                self.validate_tool_config())
 
-    def auto_configure_for_mode(self, mode):
-        """Automatically configure settings for a specific mode"""
-        mode_configs = {
-            'basic_chat': {
-                'USE_SEARCH': False,
-                'USE_VISION': False,
-                'SAVE_MEMORY': True,
-                'INCLUDE_MEMORY_CONTEXT': True,
-                'AVATAR_SPEECH': False,
-            },
-            'enhanced_chat': {
-                'USE_SEARCH': True,
-                'USE_VISION': True,
-                'SAVE_MEMORY': True,
-                'INCLUDE_MEMORY_CONTEXT': True,
-                'AVATAR_SPEECH': True,
-            },
-            'minecraft_mode': {
-                'PLAYING_MINECRAFT': True,
-                'USE_VISION': True,
-                'INCLUDE_MINECRAFT_CONTEXT': True,
-                'SEND_MINECRAFT_MESSAGE': True,
-                'SAVE_MEMORY': True,
-            },
-            'presentation_mode': {
-                'AVATAR_ANIMATIONS': True,
-                'AVATAR_SPEECH': True,
-                'USE_VISION': True,
-                'LOG_TOOL_EXECUTION': False,
-            }
+    def get_control_dependencies(self):
+        """Get a mapping of control dependencies"""
+        return {
+            'USE_VISION': ['INCLUDE_VISION_RESULTS'],
+            'USE_SEARCH': ['INCLUDE_SEARCH_RESULTS'],
+            'USE_LONG_MEMORY': ['INCLUDE_LONG_MEMORY'],
+            'PLAYING_MINECRAFT': ['INCLUDE_SYSTEM_PROMPT', 'INCLUDE_MINECRAFT_CONTEXT'],
+            'SEND_MINECRAFT_COMMAND': ['PLAYING_MINECRAFT', 'INCLUDE_MINECRAFT_CONTEXT'],
+            'SEND_MINECRAFT_MESSAGE': ['PLAYING_MINECRAFT'],
+            'INCLUDE_ENHANCED_MEMORY': ['USE_LONG_MEMORY'],
         }
-        
-        if mode in mode_configs:
-            for feature, value in mode_configs[mode].items():
-                if hasattr(self.controls, feature):
-                    setattr(self.controls, feature, value)
-            return True
-        return False
 
-# Convenience functions for backward compatibility
+    def auto_fix_dependencies(self):
+        """Automatically fix control dependencies"""
+        dependencies = self.get_control_dependencies()
+        fixed = []
+        
+        for control, deps in dependencies.items():
+            if hasattr(self.controls, control) and getattr(self.controls, control):
+                for dep in deps:
+                    if hasattr(self.controls, dep) and not getattr(self.controls, dep):
+                        setattr(self.controls, dep, True)
+                        fixed.append(f"Enabled {dep} (required by {control})")
+        
+        return fixed
+
 def toggle_feature(feature_name):
     """Global function to toggle a feature"""
     manager = ControlManager()
@@ -286,11 +186,6 @@ def get_status_summary():
     manager = ControlManager()
     return manager.get_status_summary()
 
-def load_preset(preset_name):
-    """Global function to load a preset"""
-    manager = ControlManager()
-    return manager.load_preset(preset_name)
-
 # Create a global instance for convenience
 try:
     global_control_manager = ControlManager()
@@ -304,6 +199,10 @@ if __name__ == "__main__":
         print("Control methods module self-test:")
         print(global_control_manager.get_status_summary())
         print("\nValidation:", "PASSED" if global_control_manager.validate_all_configs() else "FAILED")
-        print(f"\nAvailable presets: {', '.join(global_control_manager.get_available_presets())}")
+        
+        # Test dependency auto-fixing
+        fixes = global_control_manager.auto_fix_dependencies()
+        if fixes:
+            print(f"\nAuto-fixed dependencies: {fixes}")
     else:
         print("Control manager not available for self-test")
